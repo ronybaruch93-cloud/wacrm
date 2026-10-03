@@ -623,6 +623,24 @@
       "toastFailedDeletePipeline": "Error al eliminar el pipeline",
       "toastDeleted": "Pipeline eliminado"
     },
+        "customFields": {
+      "title": "Campos personalizados",
+      "desc": "Define campos adicionales para los deals (p. ej. fecha del turno, talle, dirección). Aparecen en todos los deals y se pueden completar desde las automatizaciones.",
+      "addField": "Agregar",
+      "fieldName": "Nombre del nuevo campo…",
+      "loading": "Cargando…",
+      "empty": "Aún no hay campos personalizados.",
+      "renameAria": "Renombrar {name}",
+      "deleteTitle": "Eliminar campo",
+      "deleteConfirm": "¿Eliminar \"{name}\"? Esto también elimina su valor guardado en todos los deals. No se puede deshacer.",
+      "toastNoAccount": "Tu perfil no está vinculado a una cuenta.",
+      "toastDuplicate": "Ya existe un campo llamado \"{name}\".",
+      "toastCreateFailed": "No se pudo crear el campo. Quizá no tengas permiso.",
+      "toastCreated": "\"{name}\" creado.",
+      "toastRenameFailed": "No se pudo renombrar el campo.",
+      "toastDeleteFailed": "No se pudo eliminar el campo.",
+      "toastDeleted": "\"{name}\" eliminado."
+    },
     "analytics": {
       "totalDeals": "Total de negocios",
       "totalDealsTooltip": "Cantidad de negocios de este pipeline que no están marcados como perdidos. Los negocios ganados siguen incluidos.",
