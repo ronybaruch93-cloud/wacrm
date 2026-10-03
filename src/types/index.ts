@@ -148,6 +148,8 @@ export interface CustomField {
   field_name: string;
   field_type: string;
   field_options?: Record<string, unknown>;
+  /** 'contact' | 'deal' — migration 043. Default 'contact'. */
+  entity_type: 'contact' | 'deal';
   created_at: string;
 }
 
@@ -157,6 +159,15 @@ export interface ContactCustomValue {
   custom_field_id: string;
   value?: string;
 }
+
+export interface DealCustomValue {
+  id: string;
+  deal_id: string;
+  custom_field_id: string;
+  value?: string;
+}
+
+
 
 export interface ContactNote {
   id: string;
@@ -390,10 +401,6 @@ export interface Deal {
   user_id: string;
   pipeline_id: string;
   stage_id: string;
-  /**
-   * Nullable after migration 004 — becomes NULL when the referenced
-   * contact is deleted (ON DELETE SET NULL). History preserved.
-   */
   contact_id: string | null;
   conversation_id?: string;
   assigned_to?: string;
@@ -403,11 +410,14 @@ export interface Deal {
   notes?: string;
   expected_close_date?: string;
   status?: DealStatus;
+  /** Estructura libre por rubro (ítems de pedido, etc). Default '{}' — migration 043. */
+  details: Record<string, unknown>;
   created_at: string;
   updated_at?: string;
   contact?: Contact;
   stage?: PipelineStage;
   assignee?: Profile;
+  custom_values?: DealCustomValue[];
 }
 
 export type BroadcastStatus = 'draft' | 'scheduled' | 'sending' | 'sent' | 'failed';
