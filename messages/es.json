@@ -1427,6 +1427,8 @@
       "tagsDesc": "Rótulos de colores para agrupar y filtrar contactos.",
       "fieldsTitle": "Campos personalizados",
       "fieldsDesc": "Campos adicionales para los contactos (p. ej. código postal, origen del lead). Aparecen en todos los contactos y en la acción de automatización “Actualizar campo del contacto”.",
+      "dealFieldsTitle": "Campos de deals",
+      "dealFieldsDesc": "Campos adicionales para deals (p. ej. fecha del turno, talle, dirección). Aparecen en todos los deals y se pueden usar en automatizaciones.",
       "adminRole": "Administrador",
       "failedToLoadTags": "Error al cargar las etiquetas",
       "nameRequired": "El nombre de la etiqueta es obligatorio",
