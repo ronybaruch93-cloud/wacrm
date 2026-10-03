@@ -48,14 +48,27 @@ export function CustomFieldsManager({
   );
 }
 
+interface CustomFieldsPanelProps {
+  /** Which catalogue this instance manages. Defaults to 'contact' so the
+   *  existing Contacts dialog and Settings card need no changes. */
+  entityType?: 'contact' | 'deal';
+  /** next-intl namespace carrying this panel's copy. Defaults to the
+   *  original contact-flavoured strings. */
+  translationNamespace?: string;
+}
+
 /**
- * Create / rename / delete account-wide custom contact field definitions.
- * Per-contact values are edited elsewhere (contact detail → Custom Fields);
- * this only manages the field catalogue. Admin+ gated by the caller — the
+ * Create / rename / delete account-wide custom field definitions, scoped to
+ * `entityType` ('contact' or 'deal' — migration 043). Per-record values are
+ * edited elsewhere (contact detail / deal detail → Custom Fields); this only
+ * manages the field catalogue. Admin+ gated by the caller — the
  * `custom_fields` RLS also rejects non-admin writes as defense in depth.
  */
-export function CustomFieldsPanel() {
-  const t = useTranslations('Contacts.customFields');
+export function CustomFieldsPanel({
+  entityType = 'contact',
+  translationNamespace = 'Contacts.customFields',
+}: CustomFieldsPanelProps = {}) {
+  const t = useTranslations(translationNamespace);
   const supabase = createClient();
   const { user, accountId } = useAuth();
 
@@ -71,11 +84,11 @@ export function CustomFieldsPanel() {
     const { data } = await supabase
       .from('custom_fields')
       .select('*')
-      .eq('entity_type', 'contact')
+      .eq('entity_type', entityType)
       .order('field_name');
     setFields((data as CustomField[] | null) ?? []);
     setLoading(false);
-  }, [supabase, accountId]);
+  }, [supabase, accountId, entityType]);
 
   // Load the field list on mount once the account is known. The setters
   // inside fetchFields run after the Supabase await — not synchronously in
@@ -111,7 +124,7 @@ export function CustomFieldsPanel() {
     const { error } = await supabase.from('custom_fields').insert({
       field_name: name,
       field_type: 'text',
-      entity_type: 'contact',
+      entity_type: entityType,
       user_id: user.id,
       account_id: accountId,
     });
@@ -224,6 +237,7 @@ export function CustomFieldsPanel() {
                 busy={busyId === field.id}
                 onRename={handleRename}
                 onDelete={handleDelete}
+                translationNamespace={translationNamespace}
               />
             ))}
           </ul>
@@ -240,13 +254,15 @@ function FieldRow({
   busy,
   onRename,
   onDelete,
+  translationNamespace,
 }: {
   field: CustomField;
   busy: boolean;
   onRename: (field: CustomField, name: string) => Promise<boolean>;
   onDelete: (field: CustomField) => void;
+  translationNamespace: string;
 }) {
-  const t = useTranslations('Contacts.customFields');
+  const t = useTranslations(translationNamespace);
   const [name, setName] = useState(field.field_name);
 
   async function commit() {
