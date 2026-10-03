@@ -623,6 +623,24 @@
       "toastFailedDeletePipeline": "Failed to delete pipeline",
       "toastDeleted": "Pipeline deleted"
     },
+      "customFields": {
+      "title": "Custom fields",
+      "desc": "Define extra fields for deals (e.g. appointment date, size, address). They appear on every deal and can be filled from automations.",
+      "addField": "Add",
+      "fieldName": "New field name…",
+      "loading": "Loading…",
+      "empty": "No custom fields yet.",
+      "renameAria": "Rename {name}",
+      "deleteTitle": "Delete field",
+      "deleteConfirm": "Delete \"{name}\"? This also removes its stored value on every deal. This cannot be undone.",
+      "toastNoAccount": "Your profile is not linked to an account.",
+      "toastDuplicate": "A field named \"{name}\" already exists.",
+      "toastCreateFailed": "Could not create field. You may not have permission.",
+      "toastCreated": "Created \"{name}\".",
+      "toastRenameFailed": "Could not rename field.",
+      "toastDeleteFailed": "Could not delete field.",
+      "toastDeleted": "Deleted \"{name}\"."
+    },
     "analytics": {
       "totalDeals": "Total Deals",
       "totalDealsTooltip": "Count of every deal in this pipeline that isn't marked as Lost. Won deals are still included.",
