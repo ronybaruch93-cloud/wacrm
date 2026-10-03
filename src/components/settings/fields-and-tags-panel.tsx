@@ -5,6 +5,7 @@ import { useCan } from '@/hooks/use-can';
 import { useTranslations } from 'next-intl';
 
 import { CustomFieldsSettings } from './custom-fields-settings';
+import { DealCustomFieldsSettings } from './deal-custom-fields-settings';
 import { SettingsPanelHead } from './settings-panel-head';
 import { TagManager } from './tag-manager';
 
@@ -27,6 +28,7 @@ export function FieldsAndTagsPanel() {
       />
       <TagManager />
       {canEditSettings ? <CustomFieldsSettings /> : null}
+      {canEditSettings ? <DealCustomFieldsSettings /> : null}
     </section>
   );
 }
