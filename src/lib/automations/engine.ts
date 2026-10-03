@@ -42,6 +42,14 @@ export interface AutomationContext {
   agent_id?: string
   /** Button / list-row id the customer tapped, for interactive_reply. */
   interactive_reply_id?: string
+  /** Deal that changed stage, for deal_stage_changed. */
+  deal_id?: string
+  /** Pipeline the deal belongs to, for deal_stage_changed. */
+  pipeline_id?: string
+  /** Stage the deal left, for deal_stage_changed. */
+  from_stage_id?: string
+  /** Stage the deal landed in, for deal_stage_changed. */
+  to_stage_id?: string
 }
 
 export interface DispatchInput {
