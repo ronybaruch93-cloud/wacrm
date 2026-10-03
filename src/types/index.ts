@@ -494,7 +494,10 @@ export type AutomationTriggerType =
   | 'time_based'
   /** Customer tapped a reply button / list row whose id matches; lets
    *  multi-step menus be chained across automations. */
-  | 'interactive_reply';
+  | 'interactive_reply'
+  /** A deal moved to a different pipeline stage. Optionally narrowed to
+   *  one pipeline and/or one destination stage. */
+  | 'deal_stage_changed';
 
 export type AutomationStepType =
   | 'send_message'
@@ -542,12 +545,20 @@ export interface InteractiveReplyTriggerConfig {
   reply_ids: string[];
 }
 
+export interface DealStageTriggerConfig {
+  /** Only fire for deals in this pipeline. Empty / omitted = any pipeline. */
+  pipeline_id?: string;
+  /** Only fire when the deal lands in this stage. Empty / omitted = any stage. */
+  to_stage_id?: string;
+}
+
 export type AutomationTriggerConfig =
   | Record<string, never>
   | KeywordMatchTriggerConfig
   | TagTriggerConfig
   | TimeBasedTriggerConfig
   | InteractiveReplyTriggerConfig
+  | DealStageTriggerConfig
   | Record<string, unknown>;
 
 export interface SendMessageStepConfig {
