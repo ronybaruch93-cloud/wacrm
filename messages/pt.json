@@ -1427,6 +1427,8 @@
       "tagsDesc": "Rótulos coloridos para agrupar e filtrar contatos.",
       "fieldsTitle": "Campos personalizados",
       "fieldsDesc": "Campos extras para os contatos (ex.: CEP, origem do lead). Eles aparecem em todos os contatos e na ação de automação “Atualizar campo do contato”.",
+      "dealFieldsTitle": "Campos de negócios",
+      "dealFieldsDesc": "Campos adicionais para negócios (ex.: data do agendamento, tamanho, endereço). Eles aparecem em todos os negócios e podem ser usados em automações.",
       "adminRole": "Administrador",
       "failedToLoadTags": "Falha ao carregar as tags",
       "nameRequired": "O nome da tag é obrigatório",
