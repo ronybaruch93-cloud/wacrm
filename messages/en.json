@@ -1427,6 +1427,8 @@
       "tagsDesc": "Colour-coded labels for grouping and filtering contacts.",
       "fieldsTitle": "Custom fields",
       "fieldsDesc": "Extra contact fields (e.g. ZIP code, lead source). They appear on every contact and in the “Update Contact Field” automation action.",
+      "dealFieldsTitle": "Deal fields",
+      "dealFieldsDesc": "Extra deal fields (e.g. appointment date, size, address). They appear on every deal and can be used in automations.",
       "adminRole": "Admin",
       "failedToLoadTags": "Failed to load tags",
       "nameRequired": "Tag name is required",
