@@ -279,6 +279,20 @@ describe("validateTriggerForActivation", () => {
     ).toEqual([]);
   });
 
+    it("requires a destination stage on deal_stage_changed triggers", () => {
+    expect(validateTriggerForActivation("deal_stage_changed", {})).toEqual([
+      { path: "trigger.to_stage_id", message: "destination stage is required" },
+    ]);
+    expect(
+      validateTriggerForActivation("deal_stage_changed", { pipeline_id: "p1" }),
+    ).toEqual([
+      { path: "trigger.to_stage_id", message: "destination stage is required" },
+    ]);
+    expect(
+      validateTriggerForActivation("deal_stage_changed", { to_stage_id: "stage-uuid" }),
+    ).toEqual([]);
+  });
+
   it("requires reply_ids on interactive_reply triggers", () => {
     expect(validateTriggerForActivation("interactive_reply", {})).toEqual([
       { path: "trigger.reply_ids", message: "at least one reply id is required" },
