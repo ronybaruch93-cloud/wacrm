@@ -416,6 +416,52 @@ describe("triggerMatches — tag_added", () => {
   });
 });
 
+describe("triggerMatches — deal_stage_changed", () => {
+  function automation(config: Record<string, unknown> = {}): Automation {
+    return {
+      id: "a1",
+      account_id: ACCOUNT,
+      user_id: "u1",
+      name: "order ready",
+      trigger_type: "deal_stage_changed",
+      trigger_config: config,
+      is_active: true,
+      execution_count: 0,
+      created_at: "",
+      updated_at: "",
+    };
+  }
+
+  const event = {
+    deal_id: "d1",
+    pipeline_id: "p1",
+    from_stage_id: "s-old",
+    to_stage_id: "s-ready",
+  };
+
+  it("matches only the configured destination stage", () => {
+    expect(triggerMatches(automation({ to_stage_id: "s-ready" }), event)).toBe(true);
+    expect(triggerMatches(automation({ to_stage_id: "s-other" }), event)).toBe(false);
+  });
+
+  it("narrows by pipeline when configured", () => {
+    expect(
+      triggerMatches(automation({ pipeline_id: "p1", to_stage_id: "s-ready" }), event),
+    ).toBe(true);
+    expect(
+      triggerMatches(automation({ pipeline_id: "p2", to_stage_id: "s-ready" }), event),
+    ).toBe(false);
+  });
+
+  it("fails closed when the event lacks the deal or destination stage", () => {
+    expect(triggerMatches(automation({ to_stage_id: "s-ready" }), {})).toBe(false);
+    expect(triggerMatches(automation({ to_stage_id: "s-ready" }), undefined)).toBe(false);
+    expect(
+      triggerMatches(automation({ to_stage_id: "s-ready" }), { to_stage_id: "s-ready" }),
+    ).toBe(false);
+  });
+});
+
 describe("tag_added — conversation policy", () => {
   it("records a clear failed step when the contact has no conversation", async () => {
     h.state.owned = { id: "c1" };
