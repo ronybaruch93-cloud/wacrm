@@ -8,6 +8,7 @@ import { CURRENCIES } from "@/lib/currency";
 import type {
   Contact,
   Conversation,
+  CustomField,
   Deal,
   DealStatus,
   PipelineStage,
@@ -30,6 +31,7 @@ import {
   MessageSquare,
   DollarSign,
   Loader2,
+  Save,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useTranslations } from "next-intl";
@@ -75,6 +77,11 @@ export function DealForm({
   const [statusAction, setStatusAction] = useState<DealStatus | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+
+  const [customFields, setCustomFields] = useState<CustomField[]>([]);
+  const [customValues, setCustomValues] = useState<Record<string, string>>({});
+  const [loadingCustom, setLoadingCustom] = useState(false);
+  const [savingCustom, setSavingCustom] = useState(false);
 
   // Reset the form fields every time the sheet opens or its input
   // props change. This is a legitimate prop-driven sync; the rule is
@@ -150,6 +157,68 @@ export function DealForm({
       cancelled = true;
     };
   }, [open, contactId, supabase]);
+
+  // Load the deal-type custom field catalogue and this deal's saved values.
+  // Only meaningful for an existing deal — there's nothing to attach
+  // deal_custom_values to until the deal itself has been created.
+  useEffect(() => {
+    if (!open || !deal?.id) {
+      setCustomFields([]);
+      setCustomValues({});
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      setLoadingCustom(true);
+      const [fieldsRes, valuesRes] = await Promise.all([
+        supabase
+          .from("custom_fields")
+          .select("*")
+          .eq("entity_type", "deal")
+          .order("field_name"),
+        supabase
+          .from("deal_custom_values")
+          .select("*")
+          .eq("deal_id", deal.id),
+      ]);
+      if (cancelled) return;
+      setCustomFields((fieldsRes.data as CustomField[] | null) ?? []);
+      const map: Record<string, string> = {};
+      (valuesRes.data ?? []).forEach((v: { custom_field_id: string; value: string | null }) => {
+        map[v.custom_field_id] = v.value ?? "";
+      });
+      setCustomValues(map);
+      setLoadingCustom(false);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [open, deal?.id, supabase]);
+
+  async function saveCustomFields() {
+    if (!deal?.id) return;
+    setSavingCustom(true);
+    try {
+      await supabase.from("deal_custom_values").delete().eq("deal_id", deal.id);
+
+      const rows = Object.entries(customValues)
+        .filter(([, val]) => val.trim())
+        .map(([fieldId, val]) => ({
+          deal_id: deal.id,
+          custom_field_id: fieldId,
+          value: val.trim(),
+        }));
+
+      if (rows.length > 0) {
+        const { error } = await supabase.from("deal_custom_values").insert(rows);
+        if (error) throw error;
+      }
+      toast.success(t("toastCustomFieldsSaved"));
+    } catch {
+      toast.error(t("toastCustomFieldsFailed"));
+    }
+    setSavingCustom(false);
+  }
 
   async function handleSave() {
     if (!title.trim() || !contactId || !stageId) {
@@ -375,6 +444,58 @@ export function DealForm({
                 className="min-h-[100px] border-border bg-muted text-foreground"
               />
             </div>
+
+            {deal && (
+              <div className="space-y-2 rounded-lg border border-border bg-muted/50 p-3">
+                <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                  {t("customFieldsTitle")}
+                </p>
+                {loadingCustom ? (
+                  <div className="flex items-center justify-center py-4">
+                    <Loader2 className="size-4 animate-spin text-muted-foreground" />
+                  </div>
+                ) : customFields.length === 0 ? (
+                  <p className="py-2 text-center text-sm text-muted-foreground">
+                    {t("noCustomFields")}
+                  </p>
+                ) : (
+                  <div className="space-y-3">
+                    {customFields.map((field) => (
+                      <div key={field.id} className="space-y-1.5">
+                        <Label className="text-xs capitalize text-muted-foreground">
+                          {field.field_name}
+                        </Label>
+                        <Input
+                          value={customValues[field.id] ?? ""}
+                          onChange={(e) =>
+                            setCustomValues((prev) => ({
+                              ...prev,
+                              [field.id]: e.target.value,
+                            }))
+                          }
+                          placeholder={t("enterCustomField", { name: field.field_name })}
+                          className="h-8 border-border bg-muted text-sm text-foreground placeholder:text-muted-foreground"
+                        />
+                      </div>
+                    ))}
+                    <Button
+                      type="button"
+                      onClick={saveCustomFields}
+                      disabled={savingCustom}
+                      size="sm"
+                      className="w-full bg-primary text-primary-foreground hover:bg-primary/90"
+                    >
+                      {savingCustom ? (
+                        <Loader2 className="size-3.5 animate-spin" />
+                      ) : (
+                        <Save className="size-3.5" />
+                      )}
+                      {t("saveCustomFieldsBtn")}
+                    </Button>
+                  </div>
+                )}
+              </div>
+            )}
 
             {deal && (
               <div className="space-y-2 rounded-lg border border-border bg-muted/50 p-3">
