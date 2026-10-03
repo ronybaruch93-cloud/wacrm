@@ -71,6 +71,7 @@ export function CustomFieldsPanel() {
     const { data } = await supabase
       .from('custom_fields')
       .select('*')
+      .eq('entity_type', 'contact')
       .order('field_name');
     setFields((data as CustomField[] | null) ?? []);
     setLoading(false);
@@ -110,6 +111,7 @@ export function CustomFieldsPanel() {
     const { error } = await supabase.from('custom_fields').insert({
       field_name: name,
       field_type: 'text',
+      entity_type: 'contact',
       user_id: user.id,
       account_id: accountId,
     });
