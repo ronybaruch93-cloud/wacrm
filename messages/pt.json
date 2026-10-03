@@ -975,6 +975,10 @@
           "label": "Tag adicionada",
           "hint": "Quando uma tag é adicionada a um contato"
         },
+        "deal_stage_changed": {
+          "label": "Mudança de etapa do negócio",
+          "hint": "Quando um negócio passa para outra etapa do pipeline"
+        },
         "time_based": {
           "label": "Por horário",
           "hint": "Em um agendamento recorrente"
