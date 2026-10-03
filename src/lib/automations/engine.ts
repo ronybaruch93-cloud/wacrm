@@ -7,6 +7,7 @@ import type {
   KeywordMatchTriggerConfig,
   InteractiveReplyTriggerConfig,
   TagTriggerConfig,
+  DealStageTriggerConfig,
   SendMessageStepConfig,
   SendButtonsStepConfig,
   SendListStepConfig,
@@ -734,8 +735,19 @@ export function triggerMatches(automation: Automation, ctx: AutomationContext | 
 
   if (automation.trigger_type === 'tag_added') {
     const cfg = automation.trigger_config as TagTriggerConfig
-    const tagId = ctx?.tag_id
+        const tagId = ctx?.tag_id
     return Boolean(tagId && cfg?.tag_id && cfg.tag_id === tagId)
+  }
+
+  // A deal landed in a new stage. The event must carry the deal and its
+  // destination stage (fail closed otherwise); the optional config
+  // narrows by pipeline and/or destination stage.
+  if (automation.trigger_type === 'deal_stage_changed') {
+    const cfg = (automation.trigger_config ?? {}) as DealStageTriggerConfig
+    if (!ctx?.deal_id || !ctx.to_stage_id) return false
+    if (cfg.pipeline_id && cfg.pipeline_id !== ctx.pipeline_id) return false
+    if (cfg.to_stage_id && cfg.to_stage_id !== ctx.to_stage_id) return false
+    return true
   }
 
   return true
