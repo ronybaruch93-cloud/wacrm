@@ -190,6 +190,12 @@ export function validateTriggerForActivation(
     if (!nonEmpty(cfg.tag_id)) {
       issues.push({ path: 'trigger.tag_id', message: 'tag is required' })
     }
+    } else if (triggerType === 'deal_stage_changed') {
+    // Without a destination stage the automation would message the
+    // customer on EVERY stage move of EVERY deal — require the stage.
+    if (!nonEmpty(cfg.to_stage_id)) {
+      issues.push({ path: 'trigger.to_stage_id', message: 'destination stage is required' })
+    }
   } else if (triggerType === 'interactive_reply') {
     const ids = cfg.reply_ids
     if (!Array.isArray(ids) || ids.length === 0) {
