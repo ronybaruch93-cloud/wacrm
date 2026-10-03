@@ -623,6 +623,24 @@
       "toastFailedDeletePipeline": "파이프라인을 삭제하지 못했습니다",
       "toastDeleted": "파이프라인이 삭제되었습니다"
     },
+        "customFields": {
+      "title": "커스텀 필드",
+      "desc": "딜(거래)에 대한 추가 필드를 정의하세요 (예: 예약 날짜, 사이즈, 주소). 모든 딜과 자동화에서 채울 수 있습니다.",
+      "addField": "추가",
+      "fieldName": "새 필드 이름…",
+      "loading": "불러오는 중…",
+      "empty": "아직 커스텀 필드가 없습니다.",
+      "renameAria": "{name} 이름 변경",
+      "deleteTitle": "필드 삭제",
+      "deleteConfirm": "\"{name}\"을(를) 삭제하시겠습니까? 모든 딜에 저장된 값도 함께 삭제되며, 되돌릴 수 없습니다.",
+      "toastNoAccount": "프로필이 계정에 연결되어 있지 않습니다.",
+      "toastDuplicate": "\"{name}\"이라는 필드가 이미 존재합니다.",
+      "toastCreateFailed": "필드를 만들 수 없습니다. 권한이 없을 수 있습니다.",
+      "toastCreated": "\"{name}\"을(를) 만들었습니다.",
+      "toastRenameFailed": "필드 이름을 변경할 수 없습니다.",
+      "toastDeleteFailed": "필드를 삭제할 수 없습니다.",
+      "toastDeleted": "\"{name}\"을(를) 삭제했습니다."
+    },
     "analytics": {
       "totalDeals": "전체 딜",
       "totalDealsTooltip": "실패로 표시되지 않은, 이 파이프라인의 모든 딜 수입니다. 성사된 딜도 포함됩니다.",
@@ -1409,6 +1427,8 @@
       "tagsDesc": "연락처를 그룹화하고 필터링하기 위한 색상 라벨입니다.",
       "fieldsTitle": "커스텀 필드",
       "fieldsDesc": "추가 연락처 필드입니다 (예: 우편번호, 리드 출처). 모든 연락처와 \"연락처 필드 업데이트\" 자동화 액션에 표시됩니다.",
+      "dealFieldsTitle": "딜 필드",
+      "dealFieldsDesc": "딜에 대한 추가 필드입니다 (예: 예약 날짜, 사이즈, 주소). 모든 딜에 나타나며 자동화에서 사용할 수 있습니다.",
       "adminRole": "관리자",
       "failedToLoadTags": "태그를 불러오지 못했습니다",
       "nameRequired": "태그 이름은 필수입니다",
