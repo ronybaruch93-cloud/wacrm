@@ -975,6 +975,10 @@
           "label": "Etiqueta agregada",
           "hint": "Cuando se agrega una etiqueta a un contacto"
         },
+        "deal_stage_changed": {
+          "label": "Cambio de etapa de un deal",
+          "hint": "Cuando un deal pasa a otra etapa del pipeline"
+        },
         "time_based": {
           "label": "Por horario",
           "hint": "Según una programación recurrente"
