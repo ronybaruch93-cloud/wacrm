@@ -147,22 +147,16 @@ export function ContactDetailView({
     setLoadingNotes(false);
   }, [contactId, supabase]);
 
-  const fetchCustomFields = useCallback(async () => {
+    const fetchCustomFields = useCallback(async () => {
     if (!contactId) return;
     setLoadingCustom(true);
 
-    const [fieldsRes, valuesRes] = await Promise.all([
     const [fieldsRes, valuesRes] = await Promise.all([
       supabase
         .from('custom_fields')
         .select('*')
         .eq('entity_type', 'contact')
         .order('field_name'),
-      supabase
-        .from('contact_custom_values')
-        .select('*')
-        .eq('contact_id', contactId),
-    ]);
       supabase
         .from('contact_custom_values')
         .select('*')
