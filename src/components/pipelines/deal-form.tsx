@@ -5,6 +5,7 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
 import { CURRENCIES } from "@/lib/currency";
+import { moveDealToStage } from "@/lib/deals/stage-api";
 import type {
   Contact,
   Conversation,
@@ -227,13 +228,15 @@ export function DealForm({
     }
     setSaving(true);
 
-    const payload = {
+        // stage_id is deliberately not part of the shared fields: on edit the
+    // stage moves through the server route (which fires deal_stage_changed
+    // automations); on create it goes straight into the insert.
+    const fields = {
       title: title.trim(),
       value: parseFloat(value) || 0,
       currency,
       contact_id: contactId,
       pipeline_id: pipelineId,
-      stage_id: stageId,
       assigned_to: assignedTo || null,
       notes: notes.trim() || null,
       expected_close_date: expectedCloseDate || null,
@@ -242,12 +245,23 @@ export function DealForm({
     if (deal) {
       const { error } = await supabase
         .from("deals")
-        .update(payload)
+        .update(fields)
         .eq("id", deal.id);
       if (error) {
         toast.error(t("toastFailedSave"));
         setSaving(false);
         return;
+      }
+      // Move the stage last, so any customer notification it triggers goes
+      // out after the rest of the deal has been saved.
+      if (stageId !== deal.stage_id) {
+        try {
+          await moveDealToStage(deal.id, stageId);
+        } catch {
+          toast.error(t("toastFailedSave"));
+          setSaving(false);
+          return;
+        }
       }
     } else {
       const {
@@ -266,7 +280,13 @@ export function DealForm({
       }
       const { error } = await supabase
         .from("deals")
-        .insert({ ...payload, user_id: user.id, account_id: accountId, status: "open" });
+        .insert({
+          ...fields,
+          stage_id: stageId,
+          user_id: user.id,
+          account_id: accountId,
+          status: "open",
+        });
       if (error) {
         toast.error(t("toastFailedCreate"));
         setSaving(false);
