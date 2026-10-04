@@ -4,6 +4,7 @@ const h = vi.hoisted(() => ({
   requireRole: vi.fn(),
   move: vi.fn(),
   dispatch: vi.fn(),
+  afterCallbacks: [] as Array<() => unknown>,
 }))
 
 vi.mock('next/server', async (importOriginal) => {
