@@ -1028,6 +1028,7 @@
         "pipelineIdLabel": "ID del pipeline",
         "stageLabel": "Etapa",
         "stageIdLabel": "ID de la etapa",
+        "destinationStageLabel": "Etapa de destino",
         "selectPipeline": "Selecciona un pipeline…",
         "selectStage": "Selecciona una etapa…",
         "selectPipelineFirst": "Primero selecciona un pipeline…",
