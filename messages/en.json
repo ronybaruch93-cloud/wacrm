@@ -1028,6 +1028,7 @@
         "pipelineIdLabel": "Pipeline id",
         "stageLabel": "Stage",
         "stageIdLabel": "Stage id",
+        "destinationStageLabel": "Destination stage",
         "selectPipeline": "Select a pipeline…",
         "selectStage": "Select a stage…",
         "selectPipelineFirst": "Select a pipeline first…",
