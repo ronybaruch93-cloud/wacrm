@@ -1028,6 +1028,7 @@
         "pipelineIdLabel": "파이프라인 id",
         "stageLabel": "단계",
         "stageIdLabel": "단계 id",
+        "destinationStageLabel": "이동할 단계",
         "selectPipeline": "파이프라인 선택…",
         "selectStage": "단계 선택…",
         "selectPipelineFirst": "먼저 파이프라인을 선택하세요…",
