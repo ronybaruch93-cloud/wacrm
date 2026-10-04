@@ -19,6 +19,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { format } from "date-fns";
+import { formatCurrency } from "@/lib/currency";
 import { useTranslations } from "next-intl";
 import { contactHandle } from "@/lib/whatsapp/wa-identity";
 
@@ -235,9 +236,8 @@ export function ContactSidebar({ contact }: ContactSidebarProps) {
                       {deal.title}
                     </p>
                     <div className="mt-1 flex items-center justify-between text-xs text-muted-foreground">
-                      <span>
-                        {deal.currency ?? "$"}
-                        {deal.value.toLocaleString()}
+                      <span className="font-mono tabular-nums">
+                        {formatCurrency(deal.value, deal.currency)}
                       </span>
                       {deal.stage && (
                         <span

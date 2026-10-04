@@ -72,6 +72,7 @@
     "page": {
       "title": "Dashboard",
       "description": "Live analytics across conversations, contacts, deals, broadcasts, and automations.",
+      "summary": "{active, plural, one {# active conversation} other {# active conversations}} · {value} open",
       "activeConversations": "Active Conversations",
       "newContactsToday": "New Contacts Today",
       "openDealsValue": "Open Deals Value",

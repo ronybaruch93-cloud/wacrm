@@ -72,6 +72,7 @@
     "page": {
       "title": "Painel",
       "description": "Métricas ao vivo de conversas, contatos, negócios, disparos e automações.",
+      "summary": "{active, plural, one {# conversa ativa} other {# conversas ativas}} · {value} em aberto",
       "activeConversations": "Conversas ativas",
       "newContactsToday": "Novos contatos hoje",
       "openDealsValue": "Valor dos negócios abertos",

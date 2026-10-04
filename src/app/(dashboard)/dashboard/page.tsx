@@ -5,13 +5,6 @@ import { createClient } from '@/lib/supabase/client'
 import { useAuth } from '@/hooks/use-auth'
 import { formatCurrency } from '@/lib/currency'
 import {
-  MessageSquare,
-  UserPlus,
-  DollarSign,
-  Send,
-} from 'lucide-react'
-
-import {
   loadActivity,
   loadConversationsSeries,
   loadMetrics,
@@ -35,6 +28,7 @@ import { ResponseTimeChart } from '@/components/dashboard/response-time-chart'
 import { ActivityFeed } from '@/components/dashboard/activity-feed'
 
 import { useTranslations } from 'next-intl'
+import { intlLocale } from '@/lib/date-locale'
 
 type RangeDays = 7 | 30 | 90
 
@@ -123,29 +117,46 @@ export default function DashboardPage() {
 
   return (
     <div className="space-y-5">
-      {/* Header */}
+      {/* Header: date eyebrow + live summary (replaces the h1 that
+          duplicated the page title already shown in the top bar). */}
       <div>
-        <h1 className="text-2xl font-bold text-foreground">{t('title')}</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          {t('description')}
+        <p className="font-mono text-xs tracking-wide text-muted-foreground uppercase">
+          {new Date().toLocaleDateString(intlLocale, {
+            weekday: 'short',
+            day: 'numeric',
+            month: 'short',
+          })}
         </p>
+        <h1 className="mt-1 font-heading text-3xl font-semibold tracking-tight text-foreground">
+          {metrics
+            ? t('summary', {
+                active: metrics.activeConversations.current,
+                value: formatCurrency(metrics.openDealsValue, defaultCurrency),
+              })
+            : t('title')}
+        </h1>
       </div>
 
-      {/* Metric cards */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      {/* Metrics strip: one container, hero metric first */}
+      <div className="grid grid-cols-1 divide-y divide-border overflow-hidden rounded-xl border border-border bg-card sm:grid-cols-2 sm:divide-y-0 lg:grid-cols-[1.5fr_1fr_1fr_1fr] lg:divide-x">
         {metricsLoading || !metrics ? (
           Array.from({ length: 4 }).map((_, i) => <SkeletonCard key={i} />)
         ) : (
           <>
             <MetricCard
+              featured
+              title={t('openDealsValue')}
+              value={formatCurrency(metrics.openDealsValue, defaultCurrency)}
+              subtitle={t('openDeals', { count: metrics.openDealsCount })}
+            />
+            <MetricCard
               title={t('activeConversations')}
               value={metrics.activeConversations.current.toLocaleString()}
-              icon={MessageSquare}
               delta={{
                 sign: metrics.activeConversations.previous,
                 label: deltaLabel(
-                  metrics.activeConversations.previous, 
-                  t('newTodayVsYesterday'), 
+                  metrics.activeConversations.previous,
+                  t('newTodayVsYesterday'),
                   t('noChange', { suffix: t('newTodayVsYesterday') })
                 ),
               }}
@@ -153,7 +164,6 @@ export default function DashboardPage() {
             <MetricCard
               title={t('newContactsToday')}
               value={metrics.newContactsToday.current.toLocaleString()}
-              icon={UserPlus}
               delta={{
                 sign:
                   metrics.newContactsToday.current - metrics.newContactsToday.previous,
@@ -165,15 +175,8 @@ export default function DashboardPage() {
               }}
             />
             <MetricCard
-              title={t('openDealsValue')}
-              value={formatCurrency(metrics.openDealsValue, defaultCurrency)}
-              icon={DollarSign}
-              subtitle={t('openDeals', { count: metrics.openDealsCount })}
-            />
-            <MetricCard
               title={t('messagesSentToday')}
               value={metrics.messagesSentToday.current.toLocaleString()}
-              icon={Send}
               delta={{
                 sign:
                   metrics.messagesSentToday.current - metrics.messagesSentToday.previous,

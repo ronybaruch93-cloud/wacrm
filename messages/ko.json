@@ -72,6 +72,7 @@
     "page": {
       "title": "대시보드",
       "description": "대화, 연락처, 딜, 브로드캐스트, 자동화 전반의 실시간 분석입니다.",
+      "summary": "{active, plural, other {활성 대화 #건}} · 진행 중 {value}",
       "activeConversations": "진행 중인 대화",
       "newContactsToday": "오늘의 신규 연락처",
       "openDealsValue": "진행 중인 딜 금액",

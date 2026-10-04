@@ -95,7 +95,7 @@ export function PipelineAnalytics({ stages, deals }: PipelineAnalyticsProps) {
 
   return (
     <TooltipProvider>
-      <div className="grid grid-cols-2 gap-3 rounded-xl border border-border bg-card/60 p-4 sm:grid-cols-3 xl:grid-cols-6">
+      <div className="grid grid-cols-2 gap-x-6 gap-y-3 border-y border-border py-3 sm:grid-cols-3 xl:grid-cols-6">
         <Metric
           icon={<BarChart3 className="h-4 w-4 text-muted-foreground" />}
           label={t("totalDeals")}
@@ -111,14 +111,14 @@ export function PipelineAnalytics({ stages, deals }: PipelineAnalyticsProps) {
           t={t}
         />
         <Metric
-          icon={<Target className="h-4 w-4 text-blue-400" />}
+          icon={<Target className="h-4 w-4 text-muted-foreground" />}
           label={t("avgDealSize")}
           value={formatCurrency(stats.avgValue, defaultCurrency)}
           tooltip={t("avgDealSizeTooltip")}
           t={t}
         />
         <Metric
-          icon={<TrendingUp className="h-4 w-4 text-purple-400" />}
+          icon={<TrendingUp className="h-4 w-4 text-primary" />}
           label={t("weightedValue")}
           value={formatCurrency(stats.weightedValue, defaultCurrency)}
           tooltip={t("weightedValueTooltip")}
@@ -158,7 +158,7 @@ function Metric({
   t: any;
 }) {
   return (
-    <div className="rounded-lg bg-muted/50 p-3">
+    <div>
       <div className="flex items-center gap-1.5 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
         {icon}
         <span>{label}</span>
