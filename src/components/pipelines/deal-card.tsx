@@ -4,6 +4,7 @@ import type { Deal, PipelineStage } from "@/types";
 import { Calendar, Check, X } from "lucide-react";
 import { formatCurrency } from "@/lib/currency";
 import { useTranslations } from "next-intl";
+import { intlLocale } from "@/lib/date-locale";
 
 interface DealCardProps {
   deal: Deal;
@@ -13,7 +14,7 @@ interface DealCardProps {
 }
 
 function formatDate(dateStr: string) {
-  return new Date(dateStr).toLocaleDateString("en-US", {
+  return new Date(dateStr).toLocaleDateString(intlLocale, {
     month: "short",
     day: "numeric",
     year: "numeric",
@@ -81,7 +82,7 @@ export function DealCard({ deal, stage, onEdit, isOverlay }: DealCardProps) {
       </div>
 
       <div className="mt-2 flex items-center justify-between">
-        <span className="text-sm font-bold text-primary">
+        <span className="font-mono text-sm font-semibold text-primary tabular-nums">
           {formatCurrency(deal.value, deal.currency)}
         </span>
         {deal.expected_close_date && (

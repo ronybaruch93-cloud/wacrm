@@ -22,7 +22,6 @@ import {
   ChevronDown,
   UserPlus,
   Check,
-  Clock,
   ArrowLeft,
   RefreshCw,
   PanelRightOpen,
@@ -139,16 +138,13 @@ const STATUS_OPTIONS: { label: string; value: ConversationStatus; color: string 
 ];
 
 /**
- * WhatsApp-style doodle background applied to the chat area (both the
- * active thread and the empty state). The SVG tile lives at
- * `/public/inbox-doodle.svg`; the slate-950 colour sits underneath so
- * the doodles read as a subtle pattern rather than a stark grid.
+ * Background applied to the chat area (both the active thread and the
+ * empty state). The old WhatsApp doodle tile was removed in the FLUXO
+ * redesign: a plain surface keeps the focus on the messages.
  *
- * Defined once at module scope so the two render paths can't drift —
- * if we ever switch the asset, both spots update together.
+ * Defined once at module scope so the two render paths can't drift.
  */
-const DOODLE_BG_CLASSES =
-  "bg-background bg-[url('/inbox-doodle.svg')] bg-repeat";
+const DOODLE_BG_CLASSES = "bg-background";
 
 export function MessageThread({
   conversation,
@@ -234,20 +230,20 @@ export function MessageThread({
 
   // 24-hour session timer
   const sessionInfo = useMemo(() => {
-    if (!messages.length) return { expired: false, remaining: "" };
+    if (!messages.length) return { expired: false, remaining: "", fraction: 0 };
 
     // Find last customer message
     const lastCustomerMsg = [...messages]
       .reverse()
       .find((m) => m.sender_type === "customer");
 
-    if (!lastCustomerMsg) return { expired: true, remaining: tTimer("noCustomerMessages") };
+    if (!lastCustomerMsg) return { expired: true, remaining: tTimer("noCustomerMessages"), fraction: 0 };
 
     const hoursSince = differenceInHours(new Date(), new Date(lastCustomerMsg.created_at));
     const expired = hoursSince >= 24;
 
     if (expired) {
-      return { expired: true, remaining: tTimer("expired") };
+      return { expired: true, remaining: tTimer("expired"), fraction: 0 };
     }
 
     const hoursLeft = 24 - hoursSince;
@@ -256,7 +252,7 @@ export function MessageThread({
         ? tTimer("xhRemaining", { hours: Math.floor(hoursLeft) })
         : tTimer("xmRemaining", { minutes: Math.floor(hoursLeft * 60) });
 
-    return { expired, remaining };
+    return { expired, remaining, fraction: Math.max(0, Math.min(1, hoursLeft / 24)) };
   }, [messages, tTimer]);
 
   // Store latest callback in a ref so fetchMessages doesn't need to
@@ -932,11 +928,28 @@ export function MessageThread({
           <Badge
             variant="outline"
             className={cn(
-              "ml-1 hidden gap-1 border-border text-[10px] sm:inline-flex sm:ml-2",
-              sessionInfo.expired ? "text-red-400" : "text-primary"
+              "ml-1 hidden gap-1.5 border-border font-mono text-[10px] sm:inline-flex sm:ml-2",
+              sessionInfo.expired
+                ? "text-destructive"
+                : sessionInfo.fraction < 0.25
+                  ? "text-brasa"
+                  : "text-primary"
             )}
           >
-            <Clock className="h-3 w-3" />
+            {/* 24h window ring: fills with the time left, turns ember when low. */}
+            <svg viewBox="0 0 20 20" className="h-3.5 w-3.5 -rotate-90" aria-hidden>
+              <circle cx="10" cy="10" r="8" fill="none" stroke="currentColor" strokeWidth="2.5" opacity="0.2" />
+              <circle
+                cx="10"
+                cy="10"
+                r="8"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2.5"
+                strokeLinecap="round"
+                strokeDasharray={`${sessionInfo.fraction * 50.27} 50.27`}
+              />
+            </svg>
             {sessionInfo.remaining}
           </Badge>
         </div>
