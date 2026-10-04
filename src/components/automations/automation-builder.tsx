@@ -146,6 +146,7 @@ const TRIGGER_OPTIONS: { value: AutomationTriggerType }[] = [
   { value: "new_contact_created" },
   { value: "conversation_assigned" },
   { value: "tag_added" },
+  { value: "deal_stage_changed" },
   { value: "time_based" },
 ]
 
@@ -459,11 +460,18 @@ function DealPipelineFields({
   stageId,
   onChange,
   t,
+  stageLabel,
+  autoSelectFirstStage = true,
 }: {
   pipelineId: string
   stageId: string
   onChange: (patch: { pipeline_id: string; stage_id: string }) => void
   t: ReturnType<typeof useTranslations>
+  /** Overrides the "Stage" label (the trigger says "Destination stage"). */
+  stageLabel?: string
+  /** Create Deal drops new deals into the first stage; the trigger must NOT
+   *  pre-pick a stage the author never chose. */
+  autoSelectFirstStage?: boolean
 }) {
   const { pipelines, stages } = useResources()
 
@@ -503,9 +511,9 @@ function DealPipelineFields({
           value={pipelineId}
           onChange={(e) => {
             const nextPipelineId = e.target.value
-            const firstStage = stages.find(
-              (s) => s.pipeline_id === nextPipelineId
-            )
+            const firstStage = autoSelectFirstStage
+              ? stages.find((s) => s.pipeline_id === nextPipelineId)
+              : undefined
             onChange({
               pipeline_id: nextPipelineId,
               stage_id: firstStage?.id ?? "",
@@ -524,7 +532,7 @@ function DealPipelineFields({
           )}
         </select>
       </FieldBlock>
-      <FieldBlock label={t("pipelines.stageLabel")}>
+      <FieldBlock label={stageLabel ?? t("pipelines.stageLabel")}>
         <select
           value={stageId}
           onChange={(e) =>
@@ -869,6 +877,22 @@ function TriggerCard({
                   t={t}
                 />
               </div>
+            )}
+            {type === "deal_stage_changed" && (
+              <DealPipelineFields
+                pipelineId={(config.pipeline_id as string) ?? ""}
+                stageId={(config.to_stage_id as string) ?? ""}
+                onChange={(p) =>
+                  onConfigChange({
+                    ...config,
+                    pipeline_id: p.pipeline_id,
+                    to_stage_id: p.stage_id,
+                  })
+                }
+                t={t}
+                stageLabel={t("pipelines.destinationStageLabel")}
+                autoSelectFirstStage={false}
+              />
             )}
             {type === "time_based" && (
               <div>
