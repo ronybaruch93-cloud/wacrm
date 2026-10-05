@@ -528,12 +528,15 @@ async function runStep(step: AutomationStep, args: ExecuteArgs): Promise<string>
           return `field ${cfg.field} not writable from automations`
         }
         // Defense in depth: the service-role client bypasses RLS, so confirm
-        // the field definition belongs to this account before writing.
+        // the field definition belongs to this account before writing. It
+        // must also be a CONTACT field — deal fields (migration 043) share
+        // the table but their values live in deal_custom_values.
         const { data: field } = await db
           .from('custom_fields')
           .select('id')
           .eq('id', customFieldId)
           .eq('account_id', args.automation.account_id)
+          .eq('entity_type', 'contact')
           .maybeSingle()
         if (!field) {
           return `field ${cfg.field} not writable from automations`
