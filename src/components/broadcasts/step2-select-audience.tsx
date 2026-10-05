@@ -131,6 +131,7 @@ export function Step2SelectAudience({
         const { data } = await supabase
           .from('custom_fields')
           .select('*')
+          .eq('entity_type', 'contact')
           .order('field_name');
         setCustomFields(data ?? []);
       } finally {
