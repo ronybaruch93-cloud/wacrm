@@ -11,6 +11,7 @@ const h = vi.hoisted(() => ({
     fromCalls: [] as string[],
     updateCalls: [] as { table: string; filters: [string, string, unknown][] }[],
     upsertCalls: [] as { table: string; payload: unknown }[],
+    customFieldLookups: [] as [string, string, unknown][][],
     logInserts: [] as Record<string, unknown>[],
     logUpdates: [] as Record<string, unknown>[],
   },
@@ -36,6 +37,7 @@ vi.mock("./admin-client", () => {
     }
     if (table === "custom_fields") {
       // account-scoped ownership lookup for a custom field definition
+      state.customFieldLookups.push(ops.filters);
       return { data: state.ownedCustomField, error: null };
     }
     if (table === "contact_custom_values") {
@@ -117,6 +119,7 @@ beforeEach(() => {
   h.state.fromCalls = [];
   h.state.updateCalls = [];
   h.state.upsertCalls = [];
+  h.state.customFieldLookups = [];
   h.state.logInserts = [];
   h.state.logUpdates = [];
 });
@@ -272,8 +275,31 @@ describe("update_contact_field — custom fields", () => {
       context: {},
     });
 
-    expect(h.state.upsertCalls).toHaveLength(0);
+        expect(h.state.upsertCalls).toHaveLength(0);
     expect(h.state.updateCalls).toHaveLength(0);
+  });
+
+  it("only accepts CONTACT custom fields, never deal fields", async () => {
+    h.state.owned = { id: "c1" };
+    h.state.ownedCustomField = { id: "cf1" };
+    h.state.automations = [automationWithUpdateStep()];
+    h.state.steps = [customStep("custom:cf1", "Premium")];
+
+    await runAutomationsForTrigger({
+      accountId: ACCOUNT,
+      triggerType: "new_message_received",
+      contactId: "c1",
+      context: {},
+    });
+
+    // Deal fields share the table (migration 043) but their values live in
+    // deal_custom_values — the lookup must be scoped to entity_type=contact.
+    expect(h.state.customFieldLookups).toHaveLength(1);
+    expect(h.state.customFieldLookups[0]).toContainEqual([
+      "eq",
+      "entity_type",
+      "contact",
+    ]);
   });
 });
 
