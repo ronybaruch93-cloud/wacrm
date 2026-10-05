@@ -92,7 +92,11 @@ export function Step3Personalize({
     (async () => {
       const supabase = createClient();
       const [fieldsRes, contactRes] = await Promise.all([
-        supabase.from('custom_fields').select('*').order('field_name'),
+        supabase
+          .from('custom_fields')
+          .select('*')
+          .eq('entity_type', 'contact')
+          .order('field_name'),
         supabase
           .from('contacts')
           .select('*')
