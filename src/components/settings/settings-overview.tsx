@@ -83,7 +83,10 @@ export function SettingsOverview({
             .from('tags')
             .select('id', { count: 'exact', head: true })
             .eq('user_id', userId),
-          supabase.from('custom_fields').select('id', { count: 'exact', head: true }),
+          supabase
+            .from('custom_fields')
+            .select('id', { count: 'exact', head: true })
+            .eq('entity_type', 'contact'),
         ]);
 
       if (cancelled) return;
