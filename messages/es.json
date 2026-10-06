@@ -1041,7 +1041,11 @@
         "languageLabel": "Idioma",
         "select": "Selecciona una plantilla…",
         "unknown": "{name} ({lang}): no está en la lista de aprobadas",
-        "unknownLang": "desconocido"
+        "unknownLang": "desconocido",
+        "headerTextLabel": "Valor del encabezado",
+        "headerMediaLabel": "Enlace del archivo del encabezado (opcional)",
+        "headerMediaHint": "Déjalo vacío para usar el archivo guardado en la plantilla.",
+        "headerMediaRequired": "Esta plantilla no tiene un archivo guardado. Ingresa un enlace público https://."
       },
       "branches": {
         "yes": "Sí",
