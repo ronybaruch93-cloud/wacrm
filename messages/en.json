@@ -1041,7 +1041,11 @@
         "languageLabel": "Language",
         "select": "Select a template…",
         "unknown": "{name} ({lang}) — not in approved list",
-        "unknownLang": "unknown"
+        "unknownLang": "unknown",
+        "headerTextLabel": "Header value",
+        "headerMediaLabel": "Header media link (optional)",
+        "headerMediaHint": "Leave empty to use the media saved in the template.",
+        "headerMediaRequired": "This template has no saved media. Enter a public https:// link."
       },
       "branches": {
         "yes": "Yes",
