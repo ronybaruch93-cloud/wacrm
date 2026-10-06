@@ -576,7 +576,14 @@ export type SendListStepConfig = InteractiveMessagePayload;
 export interface SendTemplateStepConfig {
   template_name: string;
   language?: string;
+  /** Body values keyed by placeholder number ("1", "2", …). Each value may
+   *  reference `{{ vars.x }}` and is substituted at send time. */
   variables?: Record<string, string>;
+  /** Value for the `{{1}}` of a TEXT header. Same substitution as variables. */
+  header_text?: string;
+  /** Link for an IMAGE / VIDEO / DOCUMENT header. Empty means "use the media
+   *  saved in the template". Must resolve to an https:// URL. */
+  header_media_url?: string;
 }
 
 export interface TagStepConfig {
