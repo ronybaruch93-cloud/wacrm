@@ -413,20 +413,52 @@ async function runStep(step: AutomationStep, args: ExecuteArgs): Promise<string>
       // we MUST emit params in strict numeric order. Lexicographic sort
       // of "1", "2", …, "10" yields "1", "10", "2", … which silently
       // scrambles every template with ≥10 variables.
-      const params = cfg.variables
-        ? Object.keys(cfg.variables)
-            .sort((a, b) => {
-              const na = Number(a)
-              const nb = Number(b)
-              const aNum = Number.isFinite(na)
-              const bNum = Number.isFinite(nb)
-              if (aNum && bNum) return na - nb
-              if (aNum) return -1
-              if (bNum) return 1
-              return a.localeCompare(b)
-            })
-            .map((k) => String(cfg.variables![k]))
+      const variableKeys = cfg.variables
+        ? Object.keys(cfg.variables).sort((a, b) => {
+            const na = Number(a)
+            const nb = Number(b)
+            const aNum = Number.isFinite(na)
+            const bNum = Number.isFinite(nb)
+            if (aNum && bNum) return na - nb
+            if (aNum) return -1
+            if (bNum) return 1
+            return a.localeCompare(b)
+          })
         : []
+      // Values may reference {{ vars.x }}. Meta rejects an empty text
+      // parameter with an opaque error, so refuse an empty result here — a
+      // missing variable is far easier to spot in the run log that way.
+      const params = variableKeys.map((k) => {
+        const value = interpolate(String(cfg.variables![k]), args)
+        if (!value.trim()) {
+          throw new Error(`send_template variable {{${k}}} is empty after substitution`)
+        }
+        return value
+      })
+
+      const headerText = cfg.header_text ? interpolate(cfg.header_text, args) : ''
+      if (cfg.header_text && !headerText.trim()) {
+        throw new Error('send_template header text is empty after substitution')
+      }
+      // Empty = "use the media saved in the template", so only a non-empty
+      // link overrides it (sending '' would blank the template's own media).
+      const headerMediaUrl = cfg.header_media_url
+        ? interpolate(cfg.header_media_url, args).trim()
+        : ''
+      if (cfg.header_media_url && !headerMediaUrl) {
+        throw new Error('send_template header media link is empty after substitution')
+      }
+      if (headerMediaUrl && !/^https:\/\//i.test(headerMediaUrl)) {
+        throw new Error('send_template header media link must be an https:// URL')
+      }
+      const messageParams =
+        headerText || headerMediaUrl
+          ? {
+              ...(headerText ? { headerText } : {}),
+              ...(headerMediaUrl ? { headerMediaUrl } : {}),
+            }
+          : undefined
+      
       const { whatsapp_message_id } = await engineSendTemplate({
         accountId: args.automation.account_id,
         userId: args.automation.user_id,
@@ -435,6 +467,7 @@ async function runStep(step: AutomationStep, args: ExecuteArgs): Promise<string>
         templateName: cfg.template_name,
         language: cfg.language,
         params,
+        messageParams,
       })
       return `template sent via Meta (${whatsapp_message_id})`
     }
