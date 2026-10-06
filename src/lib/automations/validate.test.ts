@@ -4,6 +4,59 @@ import {
   validateTriggerForActivation,
 } from "./validate";
 
+describe("validateStepsForActivation — send_template values", () => {
+  const issuesFor = (config: Record<string, unknown>) =>
+    validateStepsForActivation([
+      { step_type: "send_template", step_config: { template_name: "order_ready", ...config } },
+    ]);
+
+  it("accepts a template with no extra values", () => {
+    expect(issuesFor({})).toEqual([]);
+  });
+
+  it("accepts filled variables, header text and an https media link", () => {
+    expect(
+      issuesFor({
+        variables: { "1": "{{ vars.name }}", "2": "#8523" },
+        header_text: "Pedido",
+        header_media_url: "https://cdn.example.com/a.jpg",
+      }),
+    ).toEqual([]);
+  });
+
+  it("flags a blank body variable by its placeholder number", () => {
+    expect(issuesFor({ variables: { "1": "Ana", "2": "  " } })).toEqual([
+      { path: "steps[0].variables.2", message: "variable {{2}} is required" },
+    ]);
+  });
+
+  it("rejects variables that are not an object", () => {
+    expect(issuesFor({ variables: ["Ana"] })).toEqual([
+      { path: "steps[0].variables", message: "variables must be an object" },
+    ]);
+  });
+
+  it("flags a blank header text", () => {
+    expect(issuesFor({ header_text: "" })).toEqual([
+      { path: "steps[0].header_text", message: "header text is required" },
+    ]);
+  });
+
+  it("requires a literal media link to be https, but allows an empty one", () => {
+    expect(issuesFor({ header_media_url: "http://cdn.example.com/a.jpg" })).toEqual([
+      {
+        path: "steps[0].header_media_url",
+        message: "header media link must be an https:// URL",
+      },
+    ]);
+    expect(issuesFor({ header_media_url: "" })).toEqual([]);
+  });
+
+  it("leaves a media link with a variable reference for send time", () => {
+    expect(issuesFor({ header_media_url: "{{ vars.file }}" })).toEqual([]);
+  });
+});
+
 describe("validateStepsForActivation", () => {
   it("rejects empty or missing step lists", () => {
     expect(validateStepsForActivation([])).toEqual([
