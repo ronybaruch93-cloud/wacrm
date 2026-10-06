@@ -14,6 +14,8 @@ import {
   resolveTemplateRow,
   templateContentText,
 } from '@/lib/whatsapp/template-body'
+import type { SendTimeParams } from '@/lib/whatsapp/template-send-builder'
+import type { MessageTemplate } from '@/types'
 import { supabaseAdmin } from './admin-client'
 
 // ------------------------------------------------------------
@@ -48,7 +50,10 @@ interface SendTemplateArgs {
   contactId: string
   templateName: string
   language?: string
+  /** Positional body values for {{1}}, {{2}}, … */
   params?: string[]
+  /** Header / button values for this send (see SendTimeParams). */
+  messageParams?: SendTimeParams
 }
 
 export async function engineSendText(args: SendTextArgs): Promise<{ whatsapp_message_id: string }> {
@@ -150,21 +155,30 @@ async function sendViaMeta(input: SendInput): Promise<{ whatsapp_message_id: str
 
   const accessToken = decrypt(config.access_token)
 
-  // Local template row — read for the body we persist below, not for
-  // the Meta payload (the wire shape is deliberately unchanged here).
-  // A missing row is fine: the send still goes out, we just can't
-  // reconstruct the text the customer saw.
-  const templateRow =
-    input.kind === 'template'
-      ? (
-          await resolveTemplateRow(
-            db,
-            input.accountId,
-            input.templateName,
-            input.language,
-          )
-        ).row
-      : null
+    // Local template row. It drives the Meta payload (header + button
+  // components) AND the body text we persist below. A missing row is
+  // fine: the send still goes out as a body-only template, we just can't
+  // build header components or reconstruct the text the customer saw.
+  let templateRow: MessageTemplate | null = null
+  let sendLanguage: string | undefined
+  if (input.kind === 'template') {
+    const resolved = await resolveTemplateRow(
+      db,
+      input.accountId,
+      input.templateName,
+      input.language,
+    )
+    // A row that matched by name but is missing required fields would
+    // crash deep inside the payload builder. Say what is wrong instead,
+    // like the composer and the public API do.
+    if (resolved.malformed) {
+      throw new Error(
+        `template "${input.templateName}" is malformed locally — run "Sync from Meta" in Settings to repair it`,
+      )
+    }
+    templateRow = resolved.row
+    sendLanguage = resolved.language
+  }
 
   const attempt = async (phone: string): Promise<string> => {
     if (input.kind === 'template') {
@@ -173,8 +187,14 @@ async function sendViaMeta(input: SendInput): Promise<{ whatsapp_message_id: str
         accessToken,
         to: phone,
         templateName: input.templateName,
-        language: input.language,
+        language: sendLanguage,
         params: input.params,
+        // Hand over the local row so sendTemplateMessage builds the full
+        // components array. Without it only the legacy body-only payload
+        // goes out, and Meta rejects any template with a media header
+        // (it requires that component on every send).
+        template: templateRow ?? undefined,
+        messageParams: input.messageParams,
       })
       return r.messageId
     }
