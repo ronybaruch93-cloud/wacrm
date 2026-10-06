@@ -9,6 +9,7 @@ import {
 } from "react"
 import { useRouter } from "next/navigation"
 import { useTranslations } from "next-intl"
+import { extractVariableIndices } from "@/lib/whatsapp/template-validators"
 import { toast } from "sonner"
 import {
   ArrowLeft,
@@ -564,16 +565,23 @@ function DealPipelineFields({
 
 /** Template dropdown showing approved templates by name + language,
  *  storing both template_name and language. Falls back to manual name +
- *  language inputs when no approved templates are synced yet. */
+ *  language inputs when no approved templates are synced yet. Once a
+ *  template is picked, shows one input per body / header variable. */
 function SendTemplateFields({
   templateName,
   language,
+  variables,
+  headerText,
+  headerMediaUrl,
   onChange,
   t,
 }: {
   templateName: string
   language: string
-  onChange: (patch: { template_name: string; language: string }) => void
+  variables: Record<string, string>
+  headerText: string
+  headerMediaUrl: string
+  onChange: (patch: Record<string, unknown>) => void
   t: ReturnType<typeof useTranslations>
 }) {
   const { templates } = useResources()
@@ -607,36 +615,134 @@ function SendTemplateFields({
   // share a name across languages stay distinct.
   const toValue = (name: string, lang: string) => `${name}::${lang}`
   const current = templateName ? toValue(templateName, language) : ""
-  const hasMatch = templates.some(
-    (t) => toValue(t.name, t.language ?? "en_US") === current,
+  const selected = templates.find(
+    (tmpl) => toValue(tmpl.name, tmpl.language ?? "en_US") === current,
   )
+  const hasMatch = Boolean(selected)
 
   return (
-    <FieldBlock label={t("templates.templateLabel")}>
-      <select
-        value={current}
-        onChange={(e) => {
-          const [name, lang] = e.target.value.split("::")
-          onChange({ template_name: name ?? "", language: lang ?? "" })
-        }}
-        className={SELECT_CLASS}
-      >
-        <option value="">{t("templates.select")}</option>
-        {templates.map((tmpl) => {
-          const lang = tmpl.language ?? "en_US"
-          return (
-            <option key={tmpl.id} value={toValue(tmpl.name, lang)}>
-              {tmpl.name} ({lang})
+    <>
+      <FieldBlock label={t("templates.templateLabel")}>
+        <select
+          value={current}
+          onChange={(e) => {
+            const [name, lang] = e.target.value.split("::")
+            // Values typed for the previous template make no sense for the
+            // new one (different placeholders / header), so start clean.
+            onChange({
+              template_name: name ?? "",
+              language: lang ?? "",
+              variables: undefined,
+              header_text: undefined,
+              header_media_url: undefined,
+            })
+          }}
+          className={SELECT_CLASS}
+        >
+          <option value="">{t("templates.select")}</option>
+          {templates.map((tmpl) => {
+            const lang = tmpl.language ?? "en_US"
+            return (
+              <option key={tmpl.id} value={toValue(tmpl.name, lang)}>
+                {tmpl.name} ({lang})
+              </option>
+            )
+          })}
+          {current && !hasMatch && (
+            <option value={current}>
+              {t("templates.unknown", { name: templateName, lang: language || t("templates.unknownLang") })}
             </option>
-          )
-        })}
-        {current && !hasMatch && (
-          <option value={current}>
-            {t("templates.unknown", { name: templateName, lang: language || t("templates.unknownLang") })}
-          </option>
-        )}
-      </select>
-    </FieldBlock>
+          )}
+        </select>
+      </FieldBlock>
+      {selected && (
+        <TemplateValueFields
+          template={selected}
+          variables={variables}
+          headerText={headerText}
+          headerMediaUrl={headerMediaUrl}
+          onChange={onChange}
+          t={t}
+        />
+      )}
+    </>
+  )
+}
+
+/** Inputs for the values a chosen template needs at send time: one per
+ *  body {{n}}, the TEXT-header variable, and an optional media link for
+ *  IMAGE / VIDEO / DOCUMENT headers. Every value accepts {{ vars.x }}. */
+function TemplateValueFields({
+  template,
+  variables,
+  headerText,
+  headerMediaUrl,
+  onChange,
+  t,
+}: {
+  template: MessageTemplate
+  variables: Record<string, string>
+  headerText: string
+  headerMediaUrl: string
+  onChange: (patch: Record<string, unknown>) => void
+  t: ReturnType<typeof useTranslations>
+}) {
+  const bodyIndices = extractVariableIndices(template.body_text)
+  const headerNeedsText =
+    template.header_type === "text" &&
+    extractVariableIndices(template.header_content ?? "").length > 0
+  const headerIsMedia =
+    template.header_type === "image" ||
+    template.header_type === "video" ||
+    template.header_type === "document"
+
+  if (bodyIndices.length === 0 && !headerNeedsText && !headerIsMedia) return null
+
+  return (
+    <div className="space-y-3 rounded-md border border-border bg-muted/40 p-3">
+      <p className="whitespace-pre-wrap text-xs text-muted-foreground">
+        {template.body_text}
+      </p>
+      {headerNeedsText && (
+        <FieldBlock label={t("templates.headerTextLabel")}>
+          <Input
+            value={headerText}
+            onChange={(e) => onChange({ header_text: e.target.value })}
+            placeholder={t.raw("config.placeholderValue")}
+            className="bg-muted text-foreground"
+          />
+        </FieldBlock>
+      )}
+      {headerIsMedia && (
+        <FieldBlock label={t("templates.headerMediaLabel")}>
+          <Input
+            value={headerMediaUrl}
+            onChange={(e) =>
+              onChange({ header_media_url: e.target.value || undefined })
+            }
+            placeholder="https://"
+            className="bg-muted text-foreground"
+          />
+          <p className="mt-1 text-xs text-muted-foreground">
+            {template.header_media_url
+              ? t("templates.headerMediaHint")
+              : t("templates.headerMediaRequired")}
+          </p>
+        </FieldBlock>
+      )}
+      {bodyIndices.map((n) => (
+        <FieldBlock key={n} label={`{{${n}}}`}>
+          <Input
+            value={variables[String(n)] ?? ""}
+            onChange={(e) =>
+              onChange({ variables: { ...variables, [String(n)]: e.target.value } })
+            }
+            placeholder={t.raw("config.placeholderValue")}
+            className="bg-muted text-foreground"
+          />
+        </FieldBlock>
+      ))}
+    </div>
   )
 }
 
@@ -1356,9 +1462,12 @@ function StepEditor({
       )
     case "send_template":
       return (
-        <SendTemplateFields
+         <SendTemplateFields
           templateName={(cfg.template_name as string) ?? ""}
           language={(cfg.language as string) ?? ""}
+          variables={(cfg.variables as Record<string, string> | undefined) ?? {}}
+          headerText={(cfg.header_text as string) ?? ""}
+          headerMediaUrl={(cfg.header_media_url as string) ?? ""}
           onChange={(patch) => set(patch)}
           t={t}
         />
