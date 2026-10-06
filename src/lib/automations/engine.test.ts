@@ -107,6 +107,7 @@ vi.mock("./meta-send", () => ({
 }));
 
 import { runAutomationsForTrigger, triggerMatches } from "./engine";
+import { engineSendTemplate } from "./meta-send";
 import type { Automation, KeywordMatchTriggerConfig } from "@/types";
 
 const ACCOUNT = "acct-1";
@@ -118,6 +119,7 @@ beforeEach(() => {
   h.state.steps = [];
   h.state.fromCalls = [];
   h.state.updateCalls = [];
+  vi.mocked(engineSendTemplate).mockClear();
   h.state.upsertCalls = [];
   h.state.customFieldLookups = [];
   h.state.logInserts = [];
@@ -300,6 +302,82 @@ describe("update_contact_field — custom fields", () => {
       "entity_type",
       "contact",
     ]);
+  });
+});
+
+describe("send_template — variables and header", () => {
+  function templateStep(config: Record<string, unknown>) {
+    return {
+      id: "s1",
+      automation_id: "a1",
+      step_type: "send_template",
+      position: 0,
+      parent_step_id: null,
+      step_config: { template_name: "order_ready", language: "es", ...config },
+    };
+  }
+
+  async function run(config: Record<string, unknown>, vars: Record<string, string> = {}) {
+    h.state.owned = { id: "c1" };
+    h.state.automations = [automationWithUpdateStep()];
+    h.state.steps = [templateStep(config)];
+    await runAutomationsForTrigger({
+      accountId: ACCOUNT,
+      triggerType: "new_message_received",
+      contactId: "c1",
+      context: { conversation_id: "conv-1", vars },
+    });
+  }
+
+  const sent = () => vi.mocked(engineSendTemplate).mock.calls[0]?.[0];
+
+  it("substitutes {{ vars.x }} in body values and orders them numerically", async () => {
+    await run(
+      { variables: { "10": "ten", "2": "{{ vars.order }}", "1": "{{ vars.name }}" } },
+      { name: "Ana", order: "#8523" },
+    );
+
+    expect(sent()?.params).toEqual(["Ana", "#8523", "ten"]);
+  });
+
+  it("passes the header text and media link as messageParams", async () => {
+    await run(
+      {
+        header_text: "Pedido {{ vars.order }}",
+        header_media_url: "https://cdn.example.com/{{ vars.file }}.jpg",
+      },
+      { order: "#8523", file: "ready" },
+    );
+
+    expect(sent()?.messageParams).toEqual({
+      headerText: "Pedido #8523",
+      headerMediaUrl: "https://cdn.example.com/ready.jpg",
+    });
+  });
+
+  it("sends no header override when none is configured", async () => {
+    await run({ variables: { "1": "Ana" } });
+
+    expect(sent()?.params).toEqual(["Ana"]);
+    expect(sent()?.messageParams).toBeUndefined();
+  });
+
+  it("does not let an empty media link blank the template's own media", async () => {
+    await run({ variables: { "1": "Ana" }, header_media_url: "" });
+
+    expect(sent()?.messageParams).toBeUndefined();
+  });
+
+  it("refuses to send when a variable resolves to nothing", async () => {
+    await run({ variables: { "1": "{{ vars.missing }}" } }, { name: "Ana" });
+
+    expect(engineSendTemplate).not.toHaveBeenCalled();
+  });
+
+  it("refuses a header media link that is not https", async () => {
+    await run({ header_media_url: "http://cdn.example.com/a.jpg" });
+
+    expect(engineSendTemplate).not.toHaveBeenCalled();
   });
 });
 
