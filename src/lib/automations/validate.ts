@@ -69,11 +69,39 @@ function validateOne(step: StepLike, path: string, issues: ValidationIssue[]): v
       }
       break
     }
-    case 'send_template':
+        case 'send_template': {
       if (!nonEmpty(c.template_name)) {
         issues.push({ path: `${path}.template_name`, message: 'template name is required' })
       }
+      const vars = c.variables
+      if (vars !== undefined) {
+        if (vars === null || typeof vars !== 'object' || Array.isArray(vars)) {
+          issues.push({ path: `${path}.variables`, message: 'variables must be an object' })
+        } else {
+          for (const [key, value] of Object.entries(vars)) {
+            if (!nonEmpty(value)) {
+              issues.push({
+                path: `${path}.variables.${key}`,
+                message: `variable {{${key}}} is required`,
+              })
+            }
+          }
+        }
+      }
+      if (c.header_text !== undefined && !nonEmpty(c.header_text)) {
+        issues.push({ path: `${path}.header_text`, message: 'header text is required' })
+      }
+      // A literal media link must be https (Meta fetches it); one carrying a
+      // {{ vars.x }} reference can only be checked once it is substituted.
+      const media = c.header_media_url
+      if (nonEmpty(media) && !String(media).includes('{{') && !/^https:\/\//i.test(String(media).trim())) {
+        issues.push({
+          path: `${path}.header_media_url`,
+          message: 'header media link must be an https:// URL',
+        })
+      }
       break
+    }
     case 'add_tag':
     case 'remove_tag':
       if (!nonEmpty(c.tag_id)) {
