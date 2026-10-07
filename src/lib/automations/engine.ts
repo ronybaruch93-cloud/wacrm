@@ -246,8 +246,117 @@ interface ExecuteArgs {
   parentStepId: string | null
   branch: 'yes' | 'no' | null
   startPosition: number
-  logId: string | null
+    logId: string | null
   triggerEvent: string
+  /** Contact / deal values for {{ contact.* }} and {{ deal.* }}. Loaded
+   *  once per run, and only when a step in scope references them. */
+  data?: EntityData
+}
+
+/** Flat string maps keyed by what follows the namespace in a template
+ *  reference: `{{ deal.field.talle }}` reads `deal['field.talle']`. */
+interface EntityData {
+  contact: Record<string, string>
+  deal: Record<string, string>
+}
+
+const ENTITY_REFERENCE = /\{\{\s*(?:contact|deal)\./
+
+/** True when any step in this scope reads {{ contact.* }} or {{ deal.* }}. */
+function stepsUseEntityData(steps: AutomationStep[]): boolean {
+  return ENTITY_REFERENCE.test(JSON.stringify(steps.map((s) => s.step_config)))
+}
+
+/** `Fecha límite` -> `fecha_limite`: the template syntax only allows
+ *  letters, digits and underscores, so field names are normalised. */
+function slugifyKey(name: string): string {
+  return name
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+}
+
+/** A to-one embed comes back as an object or a one-element array
+ *  depending on how PostgREST infers the relationship. */
+function relatedName(rel: unknown): string {
+  const row = Array.isArray(rel) ? rel[0] : rel
+  const name = (row as { name?: unknown } | null | undefined)?.name
+  return typeof name === 'string' ? name : ''
+}
+
+async function loadEntityData(
+  db: ReturnType<typeof supabaseAdmin>,
+  args: ExecuteArgs,
+): Promise<EntityData> {
+  const accountId = args.automation.account_id
+  const data: EntityData = { contact: {}, deal: {} }
+
+  if (args.contactId) {
+    const { data: contact } = await db
+      .from('contacts')
+      .select('name, phone, email, company')
+      .eq('id', args.contactId)
+      .eq('account_id', accountId)
+      .maybeSingle()
+    if (contact) {
+      const name = String(contact.name ?? '').trim()
+      data.contact = {
+        name,
+        first_name: name.split(/\s+/)[0] ?? '',
+        phone: String(contact.phone ?? ''),
+        email: String(contact.email ?? ''),
+        company: String(contact.company ?? ''),
+      }
+    }
+  }
+
+  const dealId = args.context.deal_id
+  if (dealId) {
+    // Account-scoped: the service-role client bypasses RLS.
+    const { data: deal } = await db
+      .from('deals')
+      .select(
+        'title, value, currency, status, expected_close_date, details, stage:pipeline_stages(name), pipeline:pipelines(name)',
+      )
+      .eq('id', dealId)
+      .eq('account_id', accountId)
+      .maybeSingle()
+    if (deal) {
+      data.deal = {
+        title: String(deal.title ?? ''),
+        value: deal.value == null ? '' : String(deal.value),
+        currency: String(deal.currency ?? ''),
+        status: String(deal.status ?? ''),
+        expected_close_date: String(deal.expected_close_date ?? ''),
+        stage: relatedName(deal.stage),
+        pipeline: relatedName(deal.pipeline),
+      }
+      // Free-form details: only scalar top-level values are exposed. A list
+      // or a nested object has no sensible one-line text form.
+      const details = (deal.details ?? {}) as Record<string, unknown>
+      for (const [key, value] of Object.entries(details)) {
+        if (['string', 'number', 'boolean'].includes(typeof value)) {
+          data.deal[`details.${slugifyKey(key)}`] = String(value)
+        }
+      }
+      // Typed per-vertical attributes (migration 043).
+      const { data: values } = await db
+        .from('deal_custom_values')
+        .select('value, field:custom_fields(field_name)')
+        .eq('deal_id', dealId)
+      for (const row of (values ?? []) as Array<{ value: unknown; field: unknown }>) {
+        const field = Array.isArray(row.field) ? row.field[0] : row.field
+        const fieldName = (field as { field_name?: unknown } | null | undefined)?.field_name
+        if (typeof fieldName === 'string' && row.value != null) {
+          data.deal[`field.${slugifyKey(fieldName)}`] = String(row.value)
+        }
+      }
+    }
+  }
+
+  return data
 }
 
 async function executeStepsFrom(args: ExecuteArgs): Promise<void> {
@@ -276,6 +385,10 @@ async function executeStepsFrom(args: ExecuteArgs): Promise<void> {
       await finalizeLog(args.logId, 'success', null)
     }
     return
+  }
+
+  if (!args.data && stepsUseEntityData(steps as AutomationStep[])) {
+    args.data = await loadEntityData(db, args)
   }
 
   const results: AutomationLogStepResult[] = []
@@ -867,9 +980,13 @@ function waitMs(cfg: WaitStepConfig): number {
 
 function interpolate(s: string, args: ExecuteArgs): string {
   return s.replace(/\{\{\s*([\w.]+)\s*\}\}/g, (_, key) => {
-    const [ns, prop] = String(key).split('.')
+    const parts = String(key).split('.')
+    const [ns, prop] = parts
     if (ns === 'message' && prop === 'text') return String(args.context.message_text ?? '')
     if (ns === 'vars' && prop) return String(args.context.vars?.[prop] ?? '')
+    if ((ns === 'contact' || ns === 'deal') && prop) {
+      return args.data?.[ns]?.[parts.slice(1).join('.')] ?? ''
+    }
     return ''
   })
 }
