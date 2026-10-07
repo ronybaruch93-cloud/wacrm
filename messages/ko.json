@@ -1072,7 +1072,7 @@
         "agentLabel": "상담원",
         "fieldLabel": "필드",
         "valueLabel": "값",
-        "placeholderValue": "텍스트 또는 {{ vars.x }} / {{ message.text }}",
+        "placeholderValue": "텍스트 또는 {{ contact.name }} / {{ deal.title }} / {{ vars.x }}",
         "titleLabel": "제목",
         "amountLabel": "수치",
         "unitLabel": "단위",
