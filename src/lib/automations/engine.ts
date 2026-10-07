@@ -451,11 +451,30 @@ async function runStep(step: AutomationStep, args: ExecuteArgs): Promise<string>
       if (headerMediaUrl && !/^https:\/\//i.test(headerMediaUrl)) {
         throw new Error('send_template header media link must be an https:// URL')
       }
+           // Button values (URL-button variable, COPY_CODE override) keyed by the
+      // button's index in the template. A blank entry means "use the
+      // template's default", so it is skipped rather than sent as ''.
+      const buttonParams: Record<number, string> = {}
+      for (const [key, raw] of Object.entries(cfg.button_params ?? {})) {
+        if (!String(raw ?? '').trim()) continue
+        const index = Number(key)
+        if (!Number.isInteger(index) || index < 0) {
+          throw new Error(`send_template button key "${key}" is not a button index`)
+        }
+        const value = interpolate(String(raw), args)
+        if (!value.trim()) {
+          throw new Error(`send_template button #${index + 1} is empty after substitution`)
+        }
+        buttonParams[index] = value
+      }
+      const hasButtons = Object.keys(buttonParams).length > 0
+
       const messageParams =
-        headerText || headerMediaUrl
+        headerText || headerMediaUrl || hasButtons
           ? {
               ...(headerText ? { headerText } : {}),
               ...(headerMediaUrl ? { headerMediaUrl } : {}),
+              ...(hasButtons ? { buttonParams } : {}),
             }
           : undefined
       
