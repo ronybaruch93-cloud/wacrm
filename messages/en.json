@@ -1045,7 +1045,9 @@
         "headerTextLabel": "Header value",
         "headerMediaLabel": "Header media link (optional)",
         "headerMediaHint": "Leave empty to use the media saved in the template.",
-        "headerMediaRequired": "This template has no saved media. Enter a public https:// link."
+        "headerMediaRequired": "This template has no saved media. Enter a public https:// link.",
+        "buttonLabel": "Button {n}: {text}",
+        "buttonCopyCodeHint": "Leave empty to use the example code saved in the template."
       },
       "branches": {
         "yes": "Yes",
