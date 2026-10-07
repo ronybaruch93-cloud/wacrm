@@ -91,6 +91,28 @@ function validateOne(step: StepLike, path: string, issues: ValidationIssue[]): v
       if (c.header_text !== undefined && !nonEmpty(c.header_text)) {
         issues.push({ path: `${path}.header_text`, message: 'header text is required' })
       }
+      
+            const buttons = c.button_params
+      if (buttons !== undefined) {
+        if (buttons === null || typeof buttons !== 'object' || Array.isArray(buttons)) {
+          issues.push({ path: `${path}.button_params`, message: 'button_params must be an object' })
+        } else {
+          for (const [key, value] of Object.entries(buttons)) {
+            if (!/^\d+$/.test(key)) {
+              issues.push({
+                path: `${path}.button_params.${key}`,
+                message: 'button key must be a button index',
+              })
+            } else if (typeof value !== 'string') {
+              issues.push({
+                path: `${path}.button_params.${key}`,
+                message: 'button value must be text',
+              })
+            }
+          }
+        }
+      }
+      // A literal media link must be https (Meta fetches it); one carrying a    
       // A literal media link must be https (Meta fetches it); one carrying a
       // {{ vars.x }} reference can only be checked once it is substituted.
       const media = c.header_media_url
