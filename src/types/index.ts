@@ -583,7 +583,11 @@ export interface SendTemplateStepConfig {
   header_text?: string;
   /** Link for an IMAGE / VIDEO / DOCUMENT header. Empty means "use the media
    *  saved in the template". Must resolve to an https:// URL. */
-  header_media_url?: string;
+    header_media_url?: string;
+  /** Values for URL-button variables and COPY_CODE overrides, keyed by the
+   *  button's index in the template ("0", "1", …). Same substitution as
+   *  variables. A COPY_CODE button left out uses the template's example. */
+  button_params?: Record<string, string>;
 }
 
 export interface TagStepConfig {
