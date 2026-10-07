@@ -1045,7 +1045,9 @@
         "headerTextLabel": "Valor do cabeçalho",
         "headerMediaLabel": "Link da mídia do cabeçalho (opcional)",
         "headerMediaHint": "Deixe vazio para usar a mídia salva no modelo.",
-        "headerMediaRequired": "Este modelo não tem mídia salva. Informe um link público https://."
+        "headerMediaRequired": "Este modelo não tem mídia salva. Informe um link público https://.",
+        "buttonLabel": "Botão {n}: {text}",
+        "buttonCopyCodeHint": "Deixe vazio para usar o código de exemplo salvo no modelo."
       },
       "branches": {
         "yes": "Sim",
