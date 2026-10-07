@@ -171,6 +171,47 @@ describe("engineSendTemplate — template components", () => {
     });
   });
 
+    it("sends the URL-button value of a template whose link has a variable", async () => {
+    h.state.templates = [
+      {
+        ...IMAGE_TEMPLATE,
+        header_type: undefined,
+        header_media_url: undefined,
+        buttons: [{ type: "URL", text: "Track", url: "https://shop.example.com/{{1}}" }],
+      },
+    ];
+
+    await engineSendTemplate({
+      ...BASE,
+      language: "es",
+      params: ["Ana"],
+      messageParams: { buttonParams: { 0: "8523" } },
+    });
+
+    expect(sentTemplate().components).toContainEqual({
+      type: "button",
+      sub_type: "url",
+      index: "0",
+      parameters: [{ type: "text", text: "8523" }],
+    });
+  });
+
+  it("fails clearly when a URL button variable has no value", async () => {
+    h.state.templates = [
+      {
+        ...IMAGE_TEMPLATE,
+        header_type: undefined,
+        header_media_url: undefined,
+        buttons: [{ type: "URL", text: "Track", url: "https://shop.example.com/{{1}}" }],
+      },
+    ];
+
+    await expect(
+      engineSendTemplate({ ...BASE, language: "es", params: ["Ana"] }),
+    ).rejects.toThrow(/URL button #1/);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   it("still sends a body-only template when there is no local row", async () => {
     h.state.templates = [];
 
