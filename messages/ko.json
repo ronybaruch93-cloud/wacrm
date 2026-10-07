@@ -1045,7 +1045,9 @@
         "headerTextLabel": "헤더 값",
         "headerMediaLabel": "헤더 미디어 링크 (선택)",
         "headerMediaHint": "비워 두면 템플릿에 저장된 미디어를 사용합니다.",
-        "headerMediaRequired": "이 템플릿에는 저장된 미디어가 없습니다. 공개 https:// 링크를 입력하세요."
+        "headerMediaRequired": "이 템플릿에는 저장된 미디어가 없습니다. 공개 https:// 링크를 입력하세요.",
+        "buttonLabel": "버튼 {n}: {text}",
+        "buttonCopyCodeHint": "비워 두면 템플릿에 저장된 예시 코드를 사용합니다."
       },
       "branches": {
         "yes": "예",
