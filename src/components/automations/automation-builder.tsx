@@ -573,6 +573,7 @@ function SendTemplateFields({
   variables,
   headerText,
   headerMediaUrl,
+  buttonParams,
   onChange,
   t,
 }: {
@@ -581,6 +582,7 @@ function SendTemplateFields({
   variables: Record<string, string>
   headerText: string
   headerMediaUrl: string
+  buttonParams: Record<string, string>
   onChange: (patch: Record<string, unknown>) => void
   t: ReturnType<typeof useTranslations>
 }) {
@@ -635,6 +637,7 @@ function SendTemplateFields({
               variables: undefined,
               header_text: undefined,
               header_media_url: undefined,
+              button_params: undefined,
             })
           }}
           className={SELECT_CLASS}
@@ -661,6 +664,7 @@ function SendTemplateFields({
           variables={variables}
           headerText={headerText}
           headerMediaUrl={headerMediaUrl}
+          buttonParams={buttonParams}
           onChange={onChange}
           t={t}
         />
@@ -677,6 +681,7 @@ function TemplateValueFields({
   variables,
   headerText,
   headerMediaUrl,
+  buttonParams,
   onChange,
   t,
 }: {
@@ -684,6 +689,7 @@ function TemplateValueFields({
   variables: Record<string, string>
   headerText: string
   headerMediaUrl: string
+  buttonParams: Record<string, string>
   onChange: (patch: Record<string, unknown>) => void
   t: ReturnType<typeof useTranslations>
 }) {
@@ -696,7 +702,25 @@ function TemplateValueFields({
     template.header_type === "video" ||
     template.header_type === "document"
 
-  if (bodyIndices.length === 0 && !headerNeedsText && !headerIsMedia) return null
+  // A URL button whose link carries a {{n}} needs a value on every send; a
+  // COPY_CODE button may override its saved example code. Both are keyed by
+  // the button's position in the template, which is what Meta expects.
+  const buttonFields = (template.buttons ?? [])
+    .map((button, index) => ({ button, index }))
+    .filter(
+      ({ button }) =>
+        (button.type === "URL" && extractVariableIndices(button.url).length > 0) ||
+        button.type === "COPY_CODE",
+    )
+
+  if (
+    bodyIndices.length === 0 &&
+    !headerNeedsText &&
+    !headerIsMedia &&
+    buttonFields.length === 0
+  ) {
+    return null
+  }
 
   return (
     <div className="space-y-3 rounded-md border border-border bg-muted/40 p-3">
@@ -740,6 +764,29 @@ function TemplateValueFields({
             placeholder={t.raw("config.placeholderValue")}
             className="bg-muted text-foreground"
           />
+        </FieldBlock>
+      ))}
+      {buttonFields.map(({ button, index }) => (
+        <FieldBlock
+          key={index}
+          label={t("templates.buttonLabel", { n: index + 1, text: button.text })}
+        >
+          <Input
+            value={buttonParams[String(index)] ?? ""}
+            onChange={(e) => {
+              const next = { ...buttonParams }
+              if (e.target.value) next[String(index)] = e.target.value
+              else delete next[String(index)]
+              onChange({
+                button_params: Object.keys(next).length > 0 ? next : undefined,
+              })
+            }}
+            placeholder={t.raw("config.placeholderValue")}
+            className="bg-muted text-foreground"
+          />
+          <p className="mt-1 break-all text-xs text-muted-foreground">
+            {button.type === "URL" ? button.url : t("templates.buttonCopyCodeHint")}
+          </p>
         </FieldBlock>
       ))}
     </div>
@@ -1468,6 +1515,7 @@ function StepEditor({
           variables={(cfg.variables as Record<string, string> | undefined) ?? {}}
           headerText={(cfg.header_text as string) ?? ""}
           headerMediaUrl={(cfg.header_media_url as string) ?? ""}
+          buttonParams={(cfg.button_params as Record<string, string> | undefined) ?? {}}
           onChange={(patch) => set(patch)}
           t={t}
         />
