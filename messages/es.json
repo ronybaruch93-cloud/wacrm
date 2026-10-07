@@ -1072,7 +1072,7 @@
         "agentLabel": "Agente",
         "fieldLabel": "Campo",
         "valueLabel": "Valor",
-        "placeholderValue": "Texto o {{ vars.x }} / {{ message.text }}",
+        "placeholderValue": "Texto o {{ contact.name }} / {{ deal.title }} / {{ vars.x }}",
         "titleLabel": "Título",
         "amountLabel": "Cantidad",
         "unitLabel": "Unidad",
