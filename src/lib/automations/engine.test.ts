@@ -4,7 +4,10 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 // so the vi.mock factory below can close over it.
 const h = vi.hoisted(() => ({
   state: {
-    owned: null as { id: string } | null,
+    owned: null as Record<string, unknown> | null,
+    deal: null as Record<string, unknown> | null,
+    dealValues: [] as Record<string, unknown>[],
+    entityLookups: [] as { table: string; filters: [string, string, unknown][] }[],
     ownedCustomField: null as { id: string } | null,
     automations: [] as Record<string, unknown>[],
     steps: [] as Record<string, unknown>[],
@@ -32,8 +35,16 @@ vi.mock("./admin-client", () => {
         state.updateCalls.push({ table, filters: ops.filters });
         return { data: null, error: null };
       }
-      // ownership guard / condition read
+           // ownership guard / condition read / {{ contact.* }} data
+      state.entityLookups.push({ table, filters: ops.filters });
       return { data: state.owned, error: null };
+    }
+    if (table === "deals" && type === "select") {
+      state.entityLookups.push({ table, filters: ops.filters });
+      return { data: state.deal, error: null };
+    }
+    if (table === "deal_custom_values") {
+      return { data: state.dealValues, error: null };
     }
     if (table === "custom_fields") {
       // account-scoped ownership lookup for a custom field definition
@@ -122,6 +133,9 @@ beforeEach(() => {
   vi.mocked(engineSendTemplate).mockClear();
   h.state.upsertCalls = [];
   h.state.customFieldLookups = [];
+  h.state.deal = null;
+  h.state.dealValues = [];
+  h.state.entityLookups = [];
   h.state.logInserts = [];
   h.state.logUpdates = [];
 });
@@ -405,6 +419,150 @@ describe("send_template — variables and header", () => {
 
   it("refuses a header media link that is not https", async () => {
     await run({ header_media_url: "http://cdn.example.com/a.jpg" });
+
+    expect(engineSendTemplate).not.toHaveBeenCalled();
+  });
+});
+
+describe("interpolation — contact and deal data", () => {
+  async function run(
+    variables: Record<string, string>,
+    context: Record<string, unknown> = {},
+  ) {
+    h.state.automations = [automationWithUpdateStep()];
+    h.state.steps = [
+      {
+        id: "s1",
+        automation_id: "a1",
+        step_type: "send_template",
+        position: 0,
+        parent_step_id: null,
+        step_config: { template_name: "order_ready", language: "es", variables },
+      },
+    ];
+    await runAutomationsForTrigger({
+      accountId: ACCOUNT,
+      triggerType: "new_message_received",
+      contactId: "c1",
+      context: { conversation_id: "conv-1", ...context },
+    });
+  }
+
+  const sentParams = () => vi.mocked(engineSendTemplate).mock.calls[0]?.[0]?.params;
+
+  const DEAL = {
+    title: "#VTX8523",
+    value: 1500,
+    currency: "UYU",
+    status: "open",
+    expected_close_date: null,
+    details: { sku: "A1", "Fecha Retiro": "mañana", paid: true, items: [{ sku: "A1" }] },
+    stage: { name: "Listo" },
+    pipeline: [{ name: "Pedidos" }],
+  };
+
+  it("exposes the contact's name, first name and phone", async () => {
+    h.state.owned = { id: "c1", name: "  Ana Pérez ", phone: "59899123456" };
+
+    await run({
+      "1": "{{ contact.first_name }}",
+      "2": "{{ contact.name }}",
+      "3": "{{ contact.phone }}",
+    });
+
+    expect(sentParams()).toEqual(["Ana", "Ana Pérez", "59899123456"]);
+  });
+
+  it("exposes the deal that triggered the run, with its stage and pipeline", async () => {
+    h.state.owned = { id: "c1", name: "Ana" };
+    h.state.deal = DEAL;
+
+    await run(
+      {
+        "1": "{{ deal.title }}",
+        "2": "{{ deal.stage }}",
+        "3": "{{ deal.pipeline }}",
+        "4": "{{ deal.value }} {{ deal.currency }}",
+      },
+      { deal_id: "d1" },
+    );
+
+    expect(sentParams()).toEqual(["#VTX8523", "Listo", "Pedidos", "1500 UYU"]);
+  });
+
+  it("exposes typed deal fields under a normalised name", async () => {
+    h.state.owned = { id: "c1", name: "Ana" };
+    h.state.deal = DEAL;
+    h.state.dealValues = [
+      { value: "14:30", field: { field_name: "Fecha límite" } },
+      { value: "M", field: [{ field_name: "Talle" }] },
+    ];
+
+    await run(
+      { "1": "{{ deal.field.fecha_limite }}", "2": "{{ deal.field.talle }}" },
+      { deal_id: "d1" },
+    );
+
+    expect(sentParams()).toEqual(["14:30", "M"]);
+  });
+
+  it("exposes scalar details but not lists", async () => {
+    h.state.owned = { id: "c1", name: "Ana" };
+    h.state.deal = DEAL;
+
+    await run(
+      { "1": "{{ deal.details.sku }}", "2": "{{ deal.details.fecha_retiro }}", "3": "{{ deal.details.paid }}" },
+      { deal_id: "d1" },
+    );
+    expect(sentParams()).toEqual(["A1", "mañana", "true"]);
+
+    // A list has no one-line text form, so it resolves to nothing and the
+    // empty-variable guard refuses to send.
+    vi.mocked(engineSendTemplate).mockClear();
+    await run({ "1": "{{ deal.details.items }}" }, { deal_id: "d1" });
+    expect(engineSendTemplate).not.toHaveBeenCalled();
+  });
+
+  it("scopes both lookups to the automation's account", async () => {
+    h.state.owned = { id: "c1", name: "Ana" };
+    h.state.deal = DEAL;
+
+    await run({ "1": "{{ contact.name }}", "2": "{{ deal.title }}" }, { deal_id: "d1" });
+
+    const deals = h.state.entityLookups.find((l) => l.table === "deals");
+    expect(deals?.filters).toEqual(
+      expect.arrayContaining([
+        ["eq", "id", "d1"],
+        ["eq", "account_id", ACCOUNT],
+      ]),
+    );
+    const contactLookups = h.state.entityLookups.filter((l) => l.table === "contacts");
+    expect(
+      contactLookups.every((l) => l.filters.some((f) => f[1] === "account_id" && f[2] === ACCOUNT)),
+    ).toBe(true);
+  });
+
+  it("does not query deals when no step references deal data", async () => {
+    h.state.owned = { id: "c1", name: "Ana" };
+
+    await run({ "1": "Ana" }, { deal_id: "d1" });
+
+    expect(h.state.fromCalls).not.toContain("deals");
+    expect(h.state.fromCalls).not.toContain("deal_custom_values");
+  });
+
+  it("leaves deal values empty when the run has no deal", async () => {
+    h.state.owned = { id: "c1", name: "Ana" };
+
+    await run({ "1": "{{ deal.title }}" });
+
+    expect(engineSendTemplate).not.toHaveBeenCalled();
+  });
+
+  it("refuses to send when the contact has no name", async () => {
+    h.state.owned = { id: "c1", name: "" };
+
+    await run({ "1": "{{ contact.first_name }}" });
 
     expect(engineSendTemplate).not.toHaveBeenCalled();
   });
