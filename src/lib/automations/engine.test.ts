@@ -374,6 +374,35 @@ describe("send_template — variables and header", () => {
     expect(engineSendTemplate).not.toHaveBeenCalled();
   });
 
+    it("passes button values keyed by button index, with substitution", async () => {
+    await run(
+      { button_params: { "0": "{{ vars.order }}", "2": "SAVE10" } },
+      { order: "8523" },
+    );
+
+    expect(sent()?.messageParams).toEqual({
+      buttonParams: { 0: "8523", 2: "SAVE10" },
+    });
+  });
+
+  it("skips a blank button value so the template default applies", async () => {
+    await run({ button_params: { "0": "  " } });
+
+    expect(sent()?.messageParams).toBeUndefined();
+  });
+
+  it("refuses to send when a button value resolves to nothing", async () => {
+    await run({ button_params: { "0": "{{ vars.missing }}" } });
+
+    expect(engineSendTemplate).not.toHaveBeenCalled();
+  });
+
+  it("refuses a button key that is not a button index", async () => {
+    await run({ button_params: { first: "x" } });
+
+    expect(engineSendTemplate).not.toHaveBeenCalled();
+  });
+
   it("refuses a header media link that is not https", async () => {
     await run({ header_media_url: "http://cdn.example.com/a.jpg" });
 
