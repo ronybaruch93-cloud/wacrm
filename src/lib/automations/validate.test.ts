@@ -52,6 +52,25 @@ describe("validateStepsForActivation — send_template values", () => {
     expect(issuesFor({ header_media_url: "" })).toEqual([]);
   });
 
+    it("accepts button values keyed by index", () => {
+    expect(issuesFor({ button_params: { "0": "{{ vars.order }}", "1": "" } })).toEqual([]);
+  });
+
+  it("rejects button_params that are not an object", () => {
+    expect(issuesFor({ button_params: "x" })).toEqual([
+      { path: "steps[0].button_params", message: "button_params must be an object" },
+    ]);
+  });
+
+  it("rejects a button key that is not an index or a value that is not text", () => {
+    // Integer-like keys are enumerated before string keys, whatever the
+    // order they were written in — hence "1" is reported before "first".
+    expect(issuesFor({ button_params: { first: "x", "1": 5 } })).toEqual([
+      { path: "steps[0].button_params.1", message: "button value must be text" },
+      { path: "steps[0].button_params.first", message: "button key must be a button index" },
+    ]);
+  });
+
   it("leaves a media link with a variable reference for send time", () => {
     expect(issuesFor({ header_media_url: "{{ vars.file }}" })).toEqual([]);
   });
