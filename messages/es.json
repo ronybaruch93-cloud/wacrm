@@ -1045,7 +1045,9 @@
         "headerTextLabel": "Valor del encabezado",
         "headerMediaLabel": "Enlace del archivo del encabezado (opcional)",
         "headerMediaHint": "Déjalo vacío para usar el archivo guardado en la plantilla.",
-        "headerMediaRequired": "Esta plantilla no tiene un archivo guardado. Ingresa un enlace público https://."
+        "headerMediaRequired": "Esta plantilla no tiene un archivo guardado. Ingresa un enlace público https://.",
+        "buttonLabel": "Botón {n}: {text}",
+        "buttonCopyCodeHint": "Déjalo vacío para usar el código de ejemplo guardado en la plantilla."
       },
       "branches": {
         "yes": "Sí",
