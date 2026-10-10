@@ -7,6 +7,7 @@ const h = vi.hoisted(() => ({
     owned: null as Record<string, unknown> | null,
     deal: null as Record<string, unknown> | null,
     dealValues: [] as Record<string, unknown>[],
+    contactValues: [] as Record<string, unknown>[],
     entityLookups: [] as { table: string; filters: [string, string, unknown][] }[],
     ownedCustomField: null as { id: string } | null,
     automations: [] as Record<string, unknown>[],
@@ -56,7 +57,8 @@ vi.mock("./admin-client", () => {
         state.upsertCalls.push({ table, payload: ops.payload });
         return { data: null, error: null };
       }
-      return { data: null, error: null };
+      // {{ contact.field.* }} read
+      return { data: state.contactValues, error: null };
     }
     if (table === "automations") return { data: state.automations, error: null };
     if (table === "automation_logs") {
@@ -135,6 +137,7 @@ beforeEach(() => {
   h.state.customFieldLookups = [];
   h.state.deal = null;
   h.state.dealValues = [];
+  h.state.contactValues = [];
   h.state.entityLookups = [];
   h.state.logInserts = [];
   h.state.logUpdates = [];
@@ -471,6 +474,49 @@ describe("interpolation — contact and deal data", () => {
     });
 
     expect(sentParams()).toEqual(["Ana", "Ana Pérez", "59899123456"]);
+  });
+
+    it("exposes contact custom fields under a normalised name", async () => {
+    h.state.owned = { id: "c1", name: "Ana" };
+    h.state.contactValues = [
+      { value: "11300", field: { field_name: "Código postal", entity_type: "contact" } },
+      { value: "Instagram", field: [{ field_name: "Origen del lead", entity_type: "contact" }] },
+    ];
+
+    await run({
+      "1": "{{ contact.field.codigo_postal }}",
+      "2": "{{ contact.field.origen_del_lead }}",
+    });
+
+    expect(sentParams()).toEqual(["11300", "Instagram"]);
+  });
+
+  it("never exposes a deal field through contact.field", async () => {
+    h.state.owned = { id: "c1", name: "Ana" };
+    h.state.contactValues = [
+      { value: "M", field: { field_name: "Talle", entity_type: "deal" } },
+    ];
+
+    await run({ "1": "{{ contact.field.talle }}" });
+
+    // The value resolves to nothing, so the empty-variable guard refuses.
+    expect(engineSendTemplate).not.toHaveBeenCalled();
+  });
+
+  it("leaves a contact field empty when the contact has no value for it", async () => {
+    h.state.owned = { id: "c1", name: "Ana" };
+
+    await run({ "1": "{{ contact.field.codigo_postal }}" });
+
+    expect(engineSendTemplate).not.toHaveBeenCalled();
+  });
+
+  it("does not read contact custom values when no step references contact data", async () => {
+    h.state.owned = { id: "c1", name: "Ana" };
+
+    await run({ "1": "Ana" });
+
+    expect(h.state.fromCalls).not.toContain("contact_custom_values");
   });
 
   it("exposes the deal that triggered the run, with its stage and pipeline", async () => {
