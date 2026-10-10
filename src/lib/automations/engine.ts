@@ -309,6 +309,27 @@ async function loadEntityData(
         email: String(contact.email ?? ''),
         company: String(contact.company ?? ''),
       }
+      // Contact custom fields, under the same normalised naming as deal
+      // fields. Only reached once the contact is confirmed to belong to
+      // this account; the entity_type check keeps a deal field out even if
+      // a stray value row pointed at one.
+      const { data: values } = await db
+        .from('contact_custom_values')
+        .select('value, field:custom_fields(field_name, entity_type)')
+        .eq('contact_id', args.contactId)
+      for (const row of (values ?? []) as Array<{ value: unknown; field: unknown }>) {
+        const field = (Array.isArray(row.field) ? row.field[0] : row.field) as
+          | { field_name?: unknown; entity_type?: unknown }
+          | null
+          | undefined
+        if (
+          field?.entity_type === 'contact' &&
+          typeof field.field_name === 'string' &&
+          row.value != null
+        ) {
+          data.contact[`field.${slugifyKey(field.field_name)}`] = String(row.value)
+        }
+      }
     }
   }
 
