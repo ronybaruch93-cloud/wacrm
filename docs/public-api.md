@@ -48,6 +48,8 @@ it. Grant the minimum.
 | `contacts:read`      | List and read contacts                   |
 | `contacts:write`     | Create and update contacts               |
 | `conversations:read` | List and read conversations              |
+| `deals:read`         | Read deals; list pipelines and stages    |
+| `deals:write`        | Create and update deals                  |
 | `broadcasts:send`    | Launch broadcast campaigns               |
 | `webhooks:manage`    | Register and manage outbound webhooks    |
 
@@ -200,6 +202,29 @@ created if missing) are optional. **Find-or-create by phone:** an existing
 match returns `200` with the existing contact; a new contact returns
 `201`. The response body is the serialized contact (same shape as the
 list rows above).
+
+### `GET /api/v1/pipelines`
+
+List the account's pipelines with their stages. Scope: `deals:read`.
+Not paginated (an account has a handful of pipelines), but it uses the
+list envelope with a `null` cursor so every list parses the same way.
+This is where an integrator finds the `pipeline_id` / `stage_id` values
+needed to create a deal — those ids aren't shown in the dashboard.
+
+```json
+{
+  "data": [
+    {
+      "id": "…", "name": "Pedidos", "created_at": "…",
+      "stages": [
+        { "id": "…", "name": "Nuevo", "position": 0, "color": "#3b82f6" },
+        { "id": "…", "name": "Listo", "position": 1, "color": "#22c55e" }
+      ]
+    }
+  ],
+  "meta": { "next_cursor": null }
+}
+```
 
 ### `GET` / `PATCH /api/v1/contacts/{id}`
 
@@ -386,7 +411,7 @@ internal targets are refused at delivery time.
 ## Roadmap
 
 The public API now covers messaging, contacts, conversations,
-broadcasts, and outbound webhooks — the full scope of
-[#245](https://github.com/ArnasDon/wacrm/issues/245). Future ideas
-(deals/pipelines, templates, flows, a delivery queue for webhooks) are
-not yet scheduled.
+broadcasts, outbound webhooks, and pipelines — the full scope of
+[#245](https://github.com/ArnasDon/wacrm/issues/245) plus read access
+to pipelines. Future ideas (templates, flows, a delivery queue for
+webhooks) are not yet scheduled.
