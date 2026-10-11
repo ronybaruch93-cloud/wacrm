@@ -41,6 +41,19 @@ describe('normalizeScopes', () => {
   });
 });
 
+describe('deals scopes', () => {
+  it('are valid scopes a key can be minted with', () => {
+    expect(isApiScope('deals:read')).toBe(true);
+    expect(isApiScope('deals:write')).toBe(true);
+    expect(normalizeScopes(['deals:write'])).toEqual(['deals:write']);
+  });
+
+  it('are independent: write does not imply read', () => {
+    expect(hasScope(['deals:write'], 'deals:read')).toBe(false);
+    expect(hasScope(['deals:read'], 'deals:write')).toBe(false);
+  });
+});
+
 describe('hasScope', () => {
   it('is true when the scope is present', () => {
     expect(hasScope(['messages:send', 'contacts:read'], 'contacts:read')).toBe(
