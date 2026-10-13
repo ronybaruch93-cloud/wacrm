@@ -20,6 +20,7 @@ import type {
   AssignConversationStepConfig,
 } from '@/types'
 import { supabaseAdmin } from './admin-client'
+import { slugifyKey } from '@/lib/custom-fields/slug'
 import { addContactTagIfAbsent } from '@/lib/contacts/tag-write'
 import { MAX_TAG_CHAIN_DEPTH, getTagChainDepth } from '@/lib/contacts/tag-chain'
 import { engineSendText, engineSendTemplate, engineSendInteractive } from './meta-send'
@@ -267,16 +268,6 @@ function stepsUseEntityData(steps: AutomationStep[]): boolean {
   return ENTITY_REFERENCE.test(JSON.stringify(steps.map((s) => s.step_config)))
 }
 
-/** `Fecha límite` -> `fecha_limite`: the template syntax only allows
- *  letters, digits and underscores, so field names are normalised. */
-function slugifyKey(name: string): string {
-  return name
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '_')
-    .replace(/^_+|_+$/g, '')
-}
 
 /** A to-one embed comes back as an object or a one-element array
  *  depending on how PostgREST infers the relationship. */
