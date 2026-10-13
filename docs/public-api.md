@@ -203,6 +203,66 @@ match returns `200` with the existing contact; a new contact returns
 `201`. The response body is the serialized contact (same shape as the
 list rows above).
 
+### `POST /api/v1/deals`
+
+Create a deal — an order, booking, appointment… whatever the account's
+pipeline represents. Scope: `deals:write`.
+
+```json
+{
+  "contact": { "phone": "+59899123456", "name": "Ana Pérez" },
+  "pipeline_id": "…",
+  "title": "#VTX8523",
+  "value": 1500,
+  "currency": "UYU",
+  "details": { "items": [{ "sku": "A1", "qty": 2 }] },
+  "fields": { "talle": "M", "fecha_limite": "2026-12-24" },
+  "external_id": "ord-8523"
+}
+```
+
+| Field | Notes |
+| ----- | ----- |
+| `contact` **or** `contact_id` | Exactly one. `contact` finds the contact by phone or creates it (`phone` must be international, with a leading `+`; `name`, `email`, `company` optional). `contact_id` must belong to the account. |
+| `pipeline_id` / `stage_id` | At least one. With only `pipeline_id` the deal lands in that pipeline's **first stage**. With `stage_id` the pipeline is inferred (if both are sent they must match). Find the ids with `GET /api/v1/pipelines`. |
+| `title` | Required, up to 200 characters. |
+| `value` | Optional, default `0`. A number between 0 and 9,999,999,999.99 with at most 2 decimals. |
+| `currency` | Optional. Any ISO 4217 code (`UYU`, `USD`…). Defaults to the account's default currency. |
+| `notes`, `expected_close_date` | Optional. The date is `YYYY-MM-DD`. |
+| `details` | Optional free-form JSON object (up to 32 KB). Good for lists such as an order's items. |
+| `fields` | Optional typed attributes, keyed by the **normalised** name of a deal field defined in Settings → Fields & tags: lower-case, accents removed, anything else replaced by `_` (`Fecha límite` → `fecha_limite`). Text, number or boolean values. An unknown name is rejected with the offending names. |
+| `external_id` | Optional, up to 200 characters. Makes the call idempotent (see below). |
+
+Unknown top-level fields are rejected (`400`) instead of ignored, so a typo
+such as `valor` for `value` fails loudly rather than creating a deal worth 0.
+
+**Idempotency.** When `external_id` is sent, repeating the call with the same
+`external_id` in the same account returns the deal that already exists with
+`200` instead of creating a second one with `201`. The body of a replay is
+**not** applied: the first write wins, use a later update to change anything.
+Two different accounts may both use the same `external_id`.
+
+Returns the deal:
+
+```json
+{
+  "data": {
+    "id": "…", "external_id": "ord-8523", "title": "#VTX8523",
+    "value": 1500, "currency": "UYU", "status": "open",
+    "notes": null, "expected_close_date": null,
+    "details": { "items": [{ "sku": "A1", "qty": 2 }] },
+    "fields": { "talle": "M", "fecha_limite": "2026-12-24" },
+    "pipeline_id": "…",
+    "stage": { "id": "…", "name": "Nuevo" },
+    "contact": { "id": "…", "name": "Ana Pérez", "phone": "+59899123456" },
+    "created_at": "…", "updated_at": "…"
+  }
+}
+```
+
+Creating a deal does not fire any automation today; only a **stage change**
+does (`deal_stage_changed`).
+
 ### `GET /api/v1/pipelines`
 
 List the account's pipelines with their stages. Scope: `deals:read`.
