@@ -10,9 +10,11 @@
 
 import type { SupabaseClient } from '@supabase/supabase-js';
 
+import type { DispatchInput } from '@/lib/automations/engine';
 import { isUniqueViolation } from '@/lib/contacts/dedupe';
 import { DEFAULT_CURRENCY } from '@/lib/currency';
 import { slugifyKey } from '@/lib/custom-fields/slug';
+import { DealStageError, moveDealStage } from '@/lib/deals/stage-events';
 import {
   ContactError,
   findOrCreateContact,
@@ -194,6 +196,91 @@ function isRealDate(s: string): boolean {
   return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === s;
 }
 
+// Field validators shared by create and update, so the two can never
+// drift apart on what a valid title / value / currency / ... is.
+
+function parseTitle(v: unknown): string {
+  const title = str(v, 'title', MAX_TITLE);
+  if (!title) throw badRequest("'title' is required");
+  return title;
+}
+
+function parseValue(v: unknown): number {
+  if (typeof v !== 'number' || !Number.isFinite(v)) {
+    throw badRequest("'value' must be a number");
+  }
+  if (v < 0 || v > MAX_VALUE) {
+    throw badRequest(`'value' must be between 0 and ${MAX_VALUE}`);
+  }
+  // NUMERIC(12,2) would round silently; refuse instead of altering money.
+  if (Math.abs(v * 100 - Math.round(v * 100)) > 1e-6) {
+    throw badRequest("'value' can have at most 2 decimal places");
+  }
+  return v;
+}
+
+function parseCurrency(v: unknown): string {
+  const currency = str(v, 'currency', 3).toUpperCase();
+  if (!isIsoCurrency(currency)) {
+    throw badRequest(`'currency' ${currency} is not a valid ISO 4217 code`);
+  }
+  return currency;
+}
+
+function parseExpectedCloseDate(v: unknown): string {
+  const d = str(v, 'expected_close_date', 10);
+  if (!isRealDate(d)) {
+    throw badRequest("'expected_close_date' must be a valid date (YYYY-MM-DD)");
+  }
+  return d;
+}
+
+function parseDetails(v: unknown): Record<string, unknown> {
+  if (!isPlainObject(v)) throw badRequest("'details' must be a JSON object");
+  if (Buffer.byteLength(JSON.stringify(v), 'utf8') > MAX_DETAILS_BYTES) {
+    throw badRequest(
+      `'details' must be at most ${MAX_DETAILS_BYTES / 1024} KB`
+    );
+  }
+  return v;
+}
+
+/**
+ * Typed attributes by (normalised) name. A `null` entry means "no value":
+ * create drops it, update uses it to clear a field. Blank text counts the
+ * same as null.
+ */
+function parseFields(v: unknown): Record<string, string | null> {
+  if (!isPlainObject(v)) throw badRequest("'fields' must be an object");
+  const fields: Record<string, string | null> = {};
+  for (const [rawKey, raw] of Object.entries(v)) {
+    const key = slugifyKey(rawKey);
+    if (!key) throw badRequest(`'fields' has an invalid name: "${rawKey}"`);
+    if (key in fields) {
+      throw badRequest(`'fields' has two entries for "${key}"`);
+    }
+    if (raw === null || raw === undefined) {
+      fields[key] = null;
+      continue;
+    }
+    if (
+      typeof raw !== 'string' &&
+      typeof raw !== 'boolean' &&
+      !(typeof raw === 'number' && Number.isFinite(raw))
+    ) {
+      throw badRequest(`'fields.${key}' must be text, a number or true/false`);
+    }
+    const text = String(raw).trim();
+    if (text.length > MAX_FIELD_VALUE) {
+      throw badRequest(
+        `'fields.${key}' must be at most ${MAX_FIELD_VALUE} characters`
+      );
+    }
+    fields[key] = text || null;
+  }
+  return fields;
+}
+
 export function parseCreateDeal(body: unknown): CreateDealInput {
   if (!isPlainObject(body)) {
     throw badRequest('Request body must be a JSON object');
@@ -256,100 +343,6 @@ export function parseCreateDeal(body: unknown): CreateDealInput {
     throw badRequest("Provide 'pipeline_id' or 'stage_id'");
   }
 
-  // --- title / value / currency ---
-  const title = str(body.title ?? '', 'title', MAX_TITLE);
-  if (!title) throw badRequest("'title' is required");
-
-  let value = 0;
-  if (present(body.value)) {
-    const v = body.value;
-    if (typeof v !== 'number' || !Number.isFinite(v)) {
-      throw badRequest("'value' must be a number");
-    }
-    if (v < 0 || v > MAX_VALUE) {
-      throw badRequest(`'value' must be between 0 and ${MAX_VALUE}`);
-    }
-    // NUMERIC(12,2) would round silently; refuse instead of altering money.
-    if (Math.abs(v * 100 - Math.round(v * 100)) > 1e-6) {
-      throw badRequest("'value' can have at most 2 decimal places");
-    }
-    value = v;
-  }
-
-  let currency: string | undefined;
-  if (present(body.currency)) {
-    currency = str(body.currency, 'currency', 3).toUpperCase();
-    if (!isIsoCurrency(currency)) {
-      throw badRequest(`'currency' ${currency} is not a valid ISO 4217 code`);
-    }
-  }
-
-  // --- optional text / date ---
-  const notes = present(body.notes)
-    ? str(body.notes, 'notes', MAX_NOTES) || null
-    : null;
-
-  let expectedCloseDate: string | null = null;
-  if (present(body.expected_close_date)) {
-    const d = str(body.expected_close_date, 'expected_close_date', 10);
-    if (!isRealDate(d)) {
-      throw badRequest(
-        "'expected_close_date' must be a valid date (YYYY-MM-DD)"
-      );
-    }
-    expectedCloseDate = d;
-  }
-
-  // --- details: free-form object, size-capped ---
-  let details: Record<string, unknown> = {};
-  if (present(body.details)) {
-    if (!isPlainObject(body.details)) {
-      throw badRequest("'details' must be a JSON object");
-    }
-    if (
-      Buffer.byteLength(JSON.stringify(body.details), 'utf8') >
-      MAX_DETAILS_BYTES
-    ) {
-      throw badRequest(
-        `'details' must be at most ${MAX_DETAILS_BYTES / 1024} KB`
-      );
-    }
-    details = body.details;
-  }
-
-  // --- fields: typed attributes by (normalised) name ---
-  const fields: Record<string, string> = {};
-  if (present(body.fields)) {
-    if (!isPlainObject(body.fields)) {
-      throw badRequest("'fields' must be an object");
-    }
-    for (const [rawKey, raw] of Object.entries(body.fields)) {
-      const key = slugifyKey(rawKey);
-      if (!key) throw badRequest(`'fields' has an invalid name: "${rawKey}"`);
-      if (key in fields) {
-        throw badRequest(`'fields' has two entries for "${key}"`);
-      }
-      if (raw === null || raw === undefined) continue;
-      if (
-        typeof raw !== 'string' &&
-        typeof raw !== 'boolean' &&
-        !(typeof raw === 'number' && Number.isFinite(raw))
-      ) {
-        throw badRequest(
-          `'fields.${key}' must be text, a number or true/false`
-        );
-      }
-      const text = String(raw).trim();
-      if (text.length > MAX_FIELD_VALUE) {
-        throw badRequest(
-          `'fields.${key}' must be at most ${MAX_FIELD_VALUE} characters`
-        );
-      }
-      // Blank = "no value", same as leaving it out.
-      if (text) fields[key] = text;
-    }
-  }
-
   const externalId = present(body.external_id)
     ? str(body.external_id, 'external_id', MAX_EXTERNAL_ID)
     : null;
@@ -357,19 +350,159 @@ export function parseCreateDeal(body: unknown): CreateDealInput {
     throw badRequest("'external_id' must not be empty");
   }
 
+  // Create treats null as "not sent" for every optional field.
+  const parsedFields = present(body.fields) ? parseFields(body.fields) : {};
+  const fields: Record<string, string> = {};
+  for (const [key, value] of Object.entries(parsedFields)) {
+    if (value !== null) fields[key] = value;
+  }
+
   return {
     contact,
     pipelineId,
     stageId,
-    title,
-    value,
-    currency,
-    notes,
-    expectedCloseDate,
-    details,
+    title: parseTitle(body.title ?? ''),
+    value: present(body.value) ? parseValue(body.value) : 0,
+    currency: present(body.currency) ? parseCurrency(body.currency) : undefined,
+    notes: present(body.notes)
+      ? str(body.notes, 'notes', MAX_NOTES) || null
+      : null,
+    expectedCloseDate: present(body.expected_close_date)
+      ? parseExpectedCloseDate(body.expected_close_date)
+      : null,
+    details: present(body.details) ? parseDetails(body.details) : {},
     fields,
     externalId,
   };
+}
+
+// ---------- update input ----------
+
+export interface UpdateDealInput {
+  title?: string;
+  value?: number;
+  currency?: string;
+  /** null clears it. */
+  notes?: string | null;
+  /** null clears it. */
+  expectedCloseDate?: string | null;
+  status?: ApiDeal['status'];
+  /** Replaces the whole object. */
+  details?: Record<string, unknown>;
+  /** Normalised name -> value; null clears that field. */
+  fields?: Record<string, string | null>;
+  stageId?: string;
+}
+
+const UPDATE_KEYS = [
+  'title',
+  'value',
+  'currency',
+  'notes',
+  'expected_close_date',
+  'status',
+  'details',
+  'fields',
+  'stage_id',
+] as const;
+
+/** Set when the deal is created and never changed through the API. */
+const IMMUTABLE_KEYS = [
+  'contact',
+  'contact_id',
+  'pipeline_id',
+  'external_id',
+] as const;
+
+const STATUSES: ReadonlyArray<ApiDeal['status']> = ['open', 'won', 'lost'];
+
+export function parseUpdateDeal(body: unknown): UpdateDealInput {
+  if (!isPlainObject(body)) {
+    throw badRequest('Request body must be a JSON object');
+  }
+
+  const immutable = Object.keys(body).filter((k) =>
+    (IMMUTABLE_KEYS as readonly string[]).includes(k)
+  );
+  if (immutable.length > 0) {
+    throw badRequest(
+      `${immutable.join(', ')} cannot be changed after the deal is created`
+    );
+  }
+  const unknown = Object.keys(body).filter(
+    (k) => !(UPDATE_KEYS as readonly string[]).includes(k)
+  );
+  if (unknown.length > 0) {
+    throw badRequest(
+      `Unknown field(s): ${unknown.join(', ')}. Allowed: ${UPDATE_KEYS.join(', ')}`
+    );
+  }
+
+  // Fields that cannot be cleared must not be sent as null: ignoring it
+  // silently would hide the caller's mistake.
+  const notNull = (key: (typeof UPDATE_KEYS)[number]) => {
+    if (body[key] === null) throw badRequest(`'${key}' cannot be null`);
+  };
+
+  const input: UpdateDealInput = {};
+
+  if (body.title !== undefined) {
+    notNull('title');
+    input.title = parseTitle(body.title);
+  }
+  if (body.value !== undefined) {
+    notNull('value');
+    input.value = parseValue(body.value);
+  }
+  if (body.currency !== undefined) {
+    notNull('currency');
+    input.currency = parseCurrency(body.currency);
+  }
+  if (body.notes !== undefined) {
+    input.notes =
+      body.notes === null ? null : str(body.notes, 'notes', MAX_NOTES) || null;
+  }
+  if (body.expected_close_date !== undefined) {
+    input.expectedCloseDate =
+      body.expected_close_date === null
+        ? null
+        : parseExpectedCloseDate(body.expected_close_date);
+  }
+  if (body.status !== undefined) {
+    notNull('status');
+    if (!STATUSES.includes(body.status as ApiDeal['status'])) {
+      throw badRequest(`'status' must be one of ${STATUSES.join(', ')}`);
+    }
+    input.status = body.status as ApiDeal['status'];
+  }
+  if (body.details !== undefined) {
+    notNull('details');
+    input.details = parseDetails(body.details);
+  }
+  if (body.fields !== undefined) {
+    notNull('fields');
+    const fields = parseFields(body.fields);
+    if (Object.keys(fields).length > 0) input.fields = fields;
+  }
+  if (body.stage_id !== undefined) {
+    notNull('stage_id');
+    input.stageId = uuid(body.stage_id, 'stage_id');
+  }
+
+  if (Object.keys(input).length === 0) {
+    throw badRequest('Nothing to update: send at least one field');
+  }
+  return input;
+}
+
+/**
+ * A deal id from the URL. Anything that is not a well-formed id cannot
+ * exist, so it is a 404 — passing it to the database would be a type
+ * error there and surface as a 500.
+ */
+export function parseDealId(raw: string): string {
+  if (!UUID.test(raw)) throw new ApiError('not_found', 'Deal not found', 404);
+  return raw;
 }
 
 // ---------- reads ----------
@@ -494,14 +627,16 @@ async function resolvePlacement(
   return { pipelineId, stageId: first.id as string };
 }
 
-/** Map normalised field names to this account's deal-field ids. */
-async function resolveFieldRows(
+/**
+ * Map normalised field names to this account's deal-field ids. Unknown
+ * names are rejected, naming them, before anything is written.
+ */
+async function resolveFieldIds(
   db: SupabaseClient,
   accountId: string,
-  fields: Record<string, string>
-): Promise<Array<{ custom_field_id: string; value: string }>> {
-  const keys = Object.keys(fields);
-  if (keys.length === 0) return [];
+  keys: string[]
+): Promise<Map<string, string>> {
+  if (keys.length === 0) return new Map();
 
   const { data, error } = await db
     .from('custom_fields')
@@ -525,6 +660,16 @@ async function resolveFieldRows(
       `Unknown deal field(s): ${missing.join(', ')}. Create them in Settings → Fields & tags first.`
     );
   }
+  return idByKey;
+}
+
+async function resolveFieldRows(
+  db: SupabaseClient,
+  accountId: string,
+  fields: Record<string, string>
+): Promise<Array<{ custom_field_id: string; value: string }>> {
+  const keys = Object.keys(fields);
+  const idByKey = await resolveFieldIds(db, accountId, keys);
   return keys.map((k) => ({
     custom_field_id: idByKey.get(k) as string,
     value: fields[k],
@@ -630,4 +775,138 @@ export async function createDeal(
   const deal = await getDealById(db, accountId, dealId);
   if (!deal) throw new ApiError('internal', 'Failed to read created deal', 500);
   return { deal, created: true };
+}
+
+// ---------- update ----------
+
+function dealStageErrorToApiError(err: DealStageError): ApiError {
+  if (err.status === 404) return new ApiError('not_found', err.message, 404);
+  if (err.status === 400) return badRequest(err.message);
+  return new ApiError('internal', err.message, 500);
+}
+
+/**
+ * Update a deal. Everything that can be wrong with the input is checked
+ * before the first write. The stage moves LAST, so any customer
+ * notification a `deal_stage_changed` automation sends goes out after the
+ * rest of the deal has been saved. The returned `event` (null when the
+ * stage did not actually change) is for the caller to dispatch once the
+ * response has been sent.
+ */
+export async function updateDeal(
+  db: SupabaseClient,
+  accountId: string,
+  dealId: string,
+  input: UpdateDealInput
+): Promise<{ deal: ApiDeal; event: DispatchInput | null }> {
+  const { data: existing, error: existingError } = await db
+    .from('deals')
+    .select('id, pipeline_id')
+    .eq('id', dealId)
+    .eq('account_id', accountId)
+    .maybeSingle();
+  if (existingError) {
+    console.error('[api/v1/deals] update lookup error:', existingError);
+    throw new ApiError('internal', 'Failed to update deal', 500);
+  }
+  // 404 also covers a deal of another account: never reveal it exists.
+  if (!existing) throw new ApiError('not_found', 'Deal not found', 404);
+
+  if (input.stageId) {
+    const { data: stage } = await db
+      .from('pipeline_stages')
+      .select('id')
+      .eq('id', input.stageId)
+      .eq('pipeline_id', existing.pipeline_id as string)
+      .maybeSingle();
+    if (!stage) {
+      throw badRequest("'stage_id' does not belong to this deal's pipeline");
+    }
+  }
+
+  const fieldKeys = input.fields ? Object.keys(input.fields) : [];
+  const fieldIds = await resolveFieldIds(db, accountId, fieldKeys);
+
+  const columns: Record<string, unknown> = {};
+  if (input.title !== undefined) columns.title = input.title;
+  if (input.value !== undefined) columns.value = input.value;
+  if (input.currency !== undefined) columns.currency = input.currency;
+  if (input.notes !== undefined) columns.notes = input.notes;
+  if (input.expectedCloseDate !== undefined) {
+    columns.expected_close_date = input.expectedCloseDate;
+  }
+  if (input.status !== undefined) columns.status = input.status;
+  if (input.details !== undefined) columns.details = input.details;
+
+  if (Object.keys(columns).length > 0) {
+    const { error } = await db
+      .from('deals')
+      .update(columns)
+      .eq('id', dealId)
+      .eq('account_id', accountId);
+    if (error) {
+      console.error('[api/v1/deals] update error:', error);
+      throw new ApiError('internal', 'Failed to update deal', 500);
+    }
+  }
+
+  if (input.fields) {
+    const upserts: Array<{
+      deal_id: string;
+      custom_field_id: string;
+      value: string;
+    }> = [];
+    const clears: string[] = [];
+    for (const [key, value] of Object.entries(input.fields)) {
+      const customFieldId = fieldIds.get(key) as string;
+      if (value === null) clears.push(customFieldId);
+      else
+        upserts.push({
+          deal_id: dealId,
+          custom_field_id: customFieldId,
+          value,
+        });
+    }
+
+    if (upserts.length > 0) {
+      const { error } = await db
+        .from('deal_custom_values')
+        .upsert(upserts, { onConflict: 'deal_id,custom_field_id' });
+      if (error) {
+        console.error('[api/v1/deals] field upsert error:', error);
+        throw new ApiError('internal', 'Failed to update deal', 500);
+      }
+    }
+    if (clears.length > 0) {
+      const { error } = await db
+        .from('deal_custom_values')
+        .delete()
+        .eq('deal_id', dealId)
+        .in('custom_field_id', clears);
+      if (error) {
+        console.error('[api/v1/deals] field clear error:', error);
+        throw new ApiError('internal', 'Failed to update deal', 500);
+      }
+    }
+  }
+
+  let event: DispatchInput | null = null;
+  if (input.stageId) {
+    try {
+      const moved = await moveDealStage({
+        db,
+        accountId,
+        dealId,
+        toStageId: input.stageId,
+      });
+      event = moved.event;
+    } catch (err) {
+      if (err instanceof DealStageError) throw dealStageErrorToApiError(err);
+      throw err;
+    }
+  }
+
+  const deal = await getDealById(db, accountId, dealId);
+  if (!deal) throw new ApiError('not_found', 'Deal not found', 404);
+  return { deal, event };
 }
