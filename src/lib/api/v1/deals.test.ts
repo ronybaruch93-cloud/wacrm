@@ -10,6 +10,13 @@ vi.mock('./contacts', async (importOriginal) => {
   };
 });
 
+vi.mock('@/lib/deals/stage-events', async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import('@/lib/deals/stage-events')>();
+  return { ...actual, moveDealStage: vi.fn() };
+});
+
+import { DealStageError, moveDealStage } from '@/lib/deals/stage-events';
 import {
   ContactError,
   findOrCreateContact,
@@ -19,7 +26,10 @@ import {
   createDeal,
   getDealById,
   parseCreateDeal,
+  parseDealId,
+  parseUpdateDeal,
   serializeDeal,
+  updateDeal,
   type CreateDealInput,
 } from './deals';
 
@@ -281,7 +291,7 @@ describe('serializeDeal', () => {
 
 interface Q {
   table: string;
-  op: 'select' | 'insert' | 'update' | 'delete';
+  op: 'select' | 'insert' | 'update' | 'upsert' | 'delete';
   filters: Array<[string, unknown]>;
   payload?: unknown;
 }
@@ -297,6 +307,7 @@ interface World {
   externalLookups: unknown[];
   insertResult: { data: unknown; error: unknown };
   valuesError: unknown;
+  updateError?: unknown;
   dealRow: Record<string, unknown>;
 }
 
@@ -360,7 +371,9 @@ function makeDb(world: World) {
         return { data: null, error: world.valuesError };
       case 'deals':
         if (q.op === 'insert') return world.insertResult;
-        if (q.op === 'delete') return { data: null, error: null };
+        if (q.op === 'delete' || q.op === 'update') {
+          return { data: null, error: world.updateError ?? null };
+        }
         if (hasFilter(q, 'external_id')) {
           return { data: world.externalLookups.shift() ?? null, error: null };
         }
@@ -380,8 +393,11 @@ function makeDb(world: World) {
       const b: Record<string, unknown> = {
         select: () => b,
         insert: (p: unknown) => ((q.op = 'insert'), (q.payload = p), b),
+        update: (p: unknown) => ((q.op = 'update'), (q.payload = p), b),
+        upsert: (p: unknown) => ((q.op = 'upsert'), (q.payload = p), b),
         delete: () => ((q.op = 'delete'), b),
         eq: (c: string, v: unknown) => (q.filters.push([c, v]), b),
+        in: (c: string, v: unknown) => (q.filters.push([c, v]), b),
         order: () => b,
         limit: () => b,
         single: run,
@@ -414,6 +430,7 @@ const inserts = (queries: Q[], table: string) =>
 
 beforeEach(() => {
   vi.mocked(findOrCreateContact).mockReset();
+  vi.mocked(moveDealStage).mockReset();
   vi.mocked(resolveAuditUserId).mockReset();
   vi.mocked(resolveAuditUserId).mockResolvedValue('audit-user');
   vi.mocked(findOrCreateContact).mockResolvedValue({
@@ -741,5 +758,356 @@ describe('createDeal — failures', () => {
       code: 'internal',
       status: 500,
     });
+  });
+});
+
+// ---------- parseDealId ----------
+
+describe('parseDealId', () => {
+  it('accepts a well-formed id', () => {
+    expect(parseDealId(UUID_A)).toBe(UUID_A);
+  });
+
+  it.each(['abc', '', '123', `${UUID_A}x`, "' OR 1=1 --"])(
+    'treats %j as a deal that does not exist (404, not a database error)',
+    (raw) => {
+      expect(() => parseDealId(raw)).toThrow(/not found/i);
+      try {
+        parseDealId(raw);
+      } catch (err) {
+        expect(err).toMatchObject({ code: 'not_found', status: 404 });
+      }
+    }
+  );
+});
+
+// ---------- parseUpdateDeal ----------
+
+describe('parseUpdateDeal — accepts', () => {
+  it('only the fields that were sent', () => {
+    expect(parseUpdateDeal({ title: ' Nuevo ', status: 'won' })).toEqual({
+      title: 'Nuevo',
+      status: 'won',
+    });
+  });
+
+  it('every updatable field', () => {
+    expect(
+      parseUpdateDeal({
+        title: 'T',
+        value: 10.5,
+        currency: 'uyu',
+        notes: 'n',
+        expected_close_date: '2026-12-31',
+        status: 'lost',
+        details: { a: 1 },
+        fields: { 'Fecha límite': 'x', talle: null },
+        stage_id: UUID_A,
+      })
+    ).toEqual({
+      title: 'T',
+      value: 10.5,
+      currency: 'UYU',
+      notes: 'n',
+      expectedCloseDate: '2026-12-31',
+      status: 'lost',
+      details: { a: 1 },
+      fields: { fecha_limite: 'x', talle: null },
+      stageId: UUID_A,
+    });
+  });
+
+  it('null clears notes and the expected close date', () => {
+    expect(parseUpdateDeal({ notes: null, expected_close_date: null })).toEqual(
+      { notes: null, expectedCloseDate: null }
+    );
+  });
+
+  it('keeps a cleared field (null or blank) as a null marker', () => {
+    expect(
+      parseUpdateDeal({ fields: { talle: '  ', color: null } }).fields
+    ).toEqual({
+      talle: null,
+      color: null,
+    });
+  });
+});
+
+describe('parseUpdateDeal — rejects', () => {
+  const cases: Array<[string, unknown, RegExp]> = [
+    ['a body that is not an object', 'x', /JSON object/],
+    ['an empty object', {}, /Nothing to update/],
+    [
+      'fields that is an empty object (nothing to do)',
+      { fields: {} },
+      /Nothing to update/,
+    ],
+    ['an unknown field (typo)', { titulo: 'x' }, /Unknown field.*titulo/],
+    ['changing the contact', { contact_id: UUID_A }, /cannot be changed/],
+    [
+      'changing the pipeline',
+      { pipeline_id: UUID_A },
+      /pipeline_id cannot be changed/,
+    ],
+    [
+      'changing the external_id',
+      { external_id: 'x' },
+      /external_id cannot be changed/,
+    ],
+    ['a null title', { title: null }, /'title' cannot be null/],
+    ['a blank title', { title: '  ' }, /title/],
+    ['a null value', { value: null }, /'value' cannot be null/],
+    ['a negative value', { value: -5 }, /between 0/],
+    ['a value with 3 decimals', { value: 1.234 }, /2 decimal/],
+    ['a null currency', { currency: null }, /'currency' cannot be null/],
+    ['a currency that is not real', { currency: 'ZZZ' }, /valid ISO 4217/],
+    ['an impossible date', { expected_close_date: '2026-13-01' }, /valid date/],
+    ['an unknown status', { status: 'closed' }, /one of open, won, lost/],
+    ['a null status', { status: null }, /'status' cannot be null/],
+    ['details that are an array', { details: [] }, /JSON object/],
+    ['null details', { details: null }, /'details' cannot be null/],
+    ['null fields', { fields: null }, /'fields' cannot be null/],
+    ['a malformed stage_id', { stage_id: 'nope' }, /stage_id/],
+    ['a null stage_id', { stage_id: null }, /'stage_id' cannot be null/],
+  ];
+
+  it.each(cases)('%s', (_name, body, message) => {
+    expect(() => parseUpdateDeal(body)).toThrow(message);
+    try {
+      parseUpdateDeal(body);
+    } catch (err) {
+      expect(err).toMatchObject({ code: 'bad_request', status: 400 });
+    }
+  });
+});
+
+// ---------- updateDeal ----------
+
+const updatesOf = (queries: Q[], table: string, op: Q['op']) =>
+  queries.filter((q) => q.table === table && q.op === op);
+
+describe('updateDeal — columns', () => {
+  it('updates only the columns sent, scoped to the account', async () => {
+    const { db, queries } = makeDb(makeWorld());
+
+    await updateDeal(db, 'acct-1', 'd1', { title: 'Nuevo', status: 'won' });
+
+    const update = updatesOf(queries, 'deals', 'update')[0];
+    expect(update.payload).toEqual({ title: 'Nuevo', status: 'won' });
+    expect(update.filters).toEqual([
+      ['id', 'd1'],
+      ['account_id', 'acct-1'],
+    ]);
+  });
+
+  it('maps every field to its column, including clears', async () => {
+    const { db, queries } = makeDb(makeWorld());
+
+    await updateDeal(db, 'acct-1', 'd1', {
+      title: 'T',
+      value: 5,
+      currency: 'USD',
+      notes: null,
+      expectedCloseDate: null,
+      status: 'lost',
+      details: { a: 1 },
+    });
+
+    expect(updatesOf(queries, 'deals', 'update')[0].payload).toEqual({
+      title: 'T',
+      value: 5,
+      currency: 'USD',
+      notes: null,
+      expected_close_date: null,
+      status: 'lost',
+      details: { a: 1 },
+    });
+  });
+
+  it('returns the updated deal', async () => {
+    const { db } = makeDb(makeWorld());
+
+    const { deal, event } = await updateDeal(db, 'acct-1', 'd1', {
+      title: 'X',
+    });
+
+    expect(deal.id).toBe('d1');
+    expect(event).toBeNull();
+  });
+
+  it('answers 404 for a deal that is not in the account, writing nothing', async () => {
+    const { db, queries } = makeDb(makeWorld({ dealRow: null as never }));
+
+    await expect(
+      updateDeal(db, 'acct-1', 'other', { title: 'X' })
+    ).rejects.toMatchObject({ code: 'not_found', status: 404 });
+    expect(updatesOf(queries, 'deals', 'update')).toHaveLength(0);
+    const lookup = queries.find((q) => q.table === 'deals');
+    expect(lookup?.filters).toEqual(
+      expect.arrayContaining([['account_id', 'acct-1']])
+    );
+  });
+
+  it('answers 500 when the update fails', async () => {
+    const { db } = makeDb(makeWorld({ updateError: { message: 'boom' } }));
+
+    await expect(
+      updateDeal(db, 'acct-1', 'd1', { title: 'X' })
+    ).rejects.toMatchObject({ code: 'internal', status: 500 });
+  });
+});
+
+describe('updateDeal — custom fields', () => {
+  const FIELDS = [
+    { id: 'f1', field_name: 'Fecha límite' },
+    { id: 'f2', field_name: 'Talle' },
+  ];
+
+  it('upserts values and deletes cleared ones, by the right ids', async () => {
+    const { db, queries } = makeDb(makeWorld({ customFields: FIELDS }));
+
+    await updateDeal(db, 'acct-1', 'd1', {
+      fields: { fecha_limite: '2026-12-24', talle: null },
+    });
+
+    expect(
+      updatesOf(queries, 'deal_custom_values', 'upsert')[0].payload
+    ).toEqual([{ deal_id: 'd1', custom_field_id: 'f1', value: '2026-12-24' }]);
+    const del = updatesOf(queries, 'deal_custom_values', 'delete')[0];
+    expect(del.filters).toEqual([
+      ['deal_id', 'd1'],
+      ['custom_field_id', ['f2']],
+    ]);
+    // Only the account's DEAL fields may be matched.
+    expect(queries.find((q) => q.table === 'custom_fields')?.filters).toEqual(
+      expect.arrayContaining([
+        ['account_id', 'acct-1'],
+        ['entity_type', 'deal'],
+      ])
+    );
+  });
+
+  it('rejects an unknown field before writing anything', async () => {
+    const { db, queries } = makeDb(makeWorld({ customFields: FIELDS }));
+
+    await expect(
+      updateDeal(db, 'acct-1', 'd1', {
+        title: 'X',
+        fields: { talle: 'M', peso: '2' },
+      })
+    ).rejects.toMatchObject({ status: 400, message: /peso/ });
+    expect(updatesOf(queries, 'deals', 'update')).toHaveLength(0);
+    expect(updatesOf(queries, 'deal_custom_values', 'upsert')).toHaveLength(0);
+  });
+});
+
+describe('updateDeal — stage', () => {
+  const MOVED = {
+    changed: true,
+    from_stage_id: 'a',
+    to_stage_id: 'b',
+    event: {
+      accountId: 'acct-1',
+      triggerType: 'deal_stage_changed' as const,
+      contactId: 'c1',
+      context: {
+        deal_id: 'd1',
+        pipeline_id: 'p1',
+        from_stage_id: 'a',
+        to_stage_id: 'b',
+      },
+    },
+  };
+
+  it('moves the deal through moveDealStage and returns its event', async () => {
+    vi.mocked(moveDealStage).mockResolvedValue(MOVED);
+    const { db } = makeDb(makeWorld({ stageById: { id: 's-given' } }));
+
+    const { event } = await updateDeal(db, 'acct-1', 'd1', {
+      stageId: 's-given',
+    });
+
+    expect(moveDealStage).toHaveBeenCalledWith({
+      db,
+      accountId: 'acct-1',
+      dealId: 'd1',
+      toStageId: 's-given',
+    });
+    expect(event).toEqual(MOVED.event);
+  });
+
+  it('moves the stage LAST, after the rest of the deal is saved', async () => {
+    const { db, queries } = makeDb(makeWorld({ stageById: { id: 's-given' } }));
+    let writesBeforeMove: string[] = [];
+    vi.mocked(moveDealStage).mockImplementation(async () => {
+      writesBeforeMove = queries
+        .filter((q) => q.op === 'update' || q.op === 'upsert')
+        .map((q) => q.table);
+      return MOVED;
+    });
+
+    await updateDeal(db, 'acct-1', 'd1', {
+      title: 'X',
+      fields: {},
+      stageId: 's-given',
+    });
+
+    expect(writesBeforeMove).toEqual(['deals']);
+  });
+
+  it("rejects a stage outside the deal's own pipeline, writing nothing", async () => {
+    const { db, queries } = makeDb(makeWorld({ stageById: null }));
+
+    await expect(
+      updateDeal(db, 'acct-1', 'd1', { title: 'X', stageId: 'foreign' })
+    ).rejects.toMatchObject({ code: 'bad_request', status: 400 });
+    expect(updatesOf(queries, 'deals', 'update')).toHaveLength(0);
+    expect(moveDealStage).not.toHaveBeenCalled();
+    // The stage must be looked up inside THIS deal's pipeline.
+    expect(queries.find((q) => q.table === 'pipeline_stages')?.filters).toEqual(
+      [
+        ['id', 'foreign'],
+        ['pipeline_id', 'p1'],
+      ]
+    );
+  });
+
+  it('returns no event when the deal was already in that stage', async () => {
+    vi.mocked(moveDealStage).mockResolvedValue({
+      changed: false,
+      from_stage_id: 'a',
+      to_stage_id: 'a',
+      event: null,
+    });
+    const { db } = makeDb(makeWorld({ stageById: { id: 's-given' } }));
+
+    const { event } = await updateDeal(db, 'acct-1', 'd1', {
+      stageId: 's-given',
+    });
+
+    expect(event).toBeNull();
+  });
+
+  it.each([
+    [404, 'not_found'],
+    [400, 'bad_request'],
+    [500, 'internal'],
+  ])('maps a stage-move failure with status %i to %s', async (status, code) => {
+    vi.mocked(moveDealStage).mockRejectedValue(
+      new DealStageError('nope', status)
+    );
+    const { db } = makeDb(makeWorld({ stageById: { id: 's-given' } }));
+
+    await expect(
+      updateDeal(db, 'acct-1', 'd1', { stageId: 's-given' })
+    ).rejects.toMatchObject({ code, status });
+  });
+
+  it('does not touch the stage when none was requested', async () => {
+    const { db } = makeDb(makeWorld());
+
+    await updateDeal(db, 'acct-1', 'd1', { title: 'X' });
+
+    expect(moveDealStage).not.toHaveBeenCalled();
   });
 });
