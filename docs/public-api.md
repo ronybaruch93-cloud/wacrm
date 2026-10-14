@@ -261,7 +261,36 @@ Returns the deal:
 ```
 
 Creating a deal does not fire any automation today; only a **stage change**
-does (`deal_stage_changed`).
+does (`deal_stage_changed`, see `PATCH` below).
+
+### `GET /api/v1/deals/{id}`
+
+Read one deal, in the same shape `POST` returns. Scope: `deals:read`. A deal
+that belongs to another account — or an id that is not even well-formed —
+answers `404`, never `403`, so nothing reveals that it exists elsewhere.
+
+### `PATCH /api/v1/deals/{id}`
+
+Update a deal. Scope: `deals:write`. Only the fields present in the body
+change; the response is the updated deal.
+
+| Field | Notes |
+| ----- | ----- |
+| `title`, `value`, `currency` | Same rules as on creation. Cannot be `null`. |
+| `notes`, `expected_close_date` | `null` clears them. |
+| `status` | `open`, `won` or `lost`. |
+| `details` | **Replaces the whole object.** To change one key, send the whole object (read it first with `GET`). |
+| `fields` | Per field, by normalised name: a value sets it, `null` or blank clears it. Fields not mentioned are left alone. An unknown name is rejected. |
+| `stage_id` | Moves the deal to another stage of **its own pipeline** and fires the account's `deal_stage_changed` automations — the way a storefront triggers "your order is ready". Sending the stage the deal is already in does nothing and fires nothing. |
+
+`contact`, `contact_id`, `pipeline_id` and `external_id` are set at creation
+and cannot be changed (`400`). An empty body is a `400` too.
+
+Everything is validated **before** the first write. The stage moves **last**,
+so a customer notification it triggers goes out after the rest of the deal has
+been saved; the automation itself runs after the response, so a slow WhatsApp
+send never delays your call. If the database itself fails midway (rare),
+changes made before the failure are not rolled back.
 
 ### `GET /api/v1/pipelines`
 
