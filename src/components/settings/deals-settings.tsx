@@ -6,7 +6,7 @@ import { Coins, Loader2 } from "lucide-react";
 
 import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
-import { CURRENCIES } from "@/lib/currency";
+import { useCurrencyOptions } from "@/hooks/use-currency-options";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import {
@@ -41,6 +41,7 @@ export function DealsSettings() {
   const [selected, setSelected] = useState(defaultCurrency);
   const [saving, setSaving] = useState(false);
   const t = useTranslations("Settings.deals");
+  const currencyOptions = useCurrencyOptions([selected, defaultCurrency]);
 
   // Keep the select in sync once the profile (and its account default)
   // resolves, and after a save round-trips through refreshProfile.
@@ -94,7 +95,7 @@ export function DealsSettings() {
               disabled={!canEditSettings || profileLoading}
               className="h-9 w-full rounded-lg border border-border bg-muted px-2.5 text-sm text-foreground outline-none focus:border-primary focus:ring-1 focus:ring-primary disabled:cursor-not-allowed disabled:opacity-60"
             >
-              {CURRENCIES.map((c) => (
+              {currencyOptions.map((c) => (
                 <option key={c.code} value={c.code}>
                   {c.code} — {c.label}
                 </option>
