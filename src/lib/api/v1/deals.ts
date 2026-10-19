@@ -12,7 +12,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 
 import type { DispatchInput } from '@/lib/automations/engine';
 import { isUniqueViolation } from '@/lib/contacts/dedupe';
-import { DEFAULT_CURRENCY } from '@/lib/currency';
+import { DEFAULT_CURRENCY, isIsoCurrency } from '@/lib/currency';
 import { slugifyKey } from '@/lib/custom-fields/slug';
 import { DealStageError, moveDealStage } from '@/lib/deals/stage-events';
 import {
@@ -149,22 +149,6 @@ const MAX_FIELD_VALUE = 2000;
 const MAX_DETAILS_BYTES = 32 * 1024;
 /** deals.value is NUMERIC(12,2). */
 const MAX_VALUE = 9_999_999_999.99;
-
-/**
- * Any real ISO-4217 code, not just the ones the dashboard picker offers:
- * the schema deliberately accepts any 3-letter code ("forks can use any
- * currency Intl supports") and the formatters cope with all of them.
- * `Intl` knows the real list, so use it; if a runtime lacks it, fall back
- * to the shape check alone rather than rejecting everything.
- */
-function isIsoCurrency(code: string): boolean {
-  if (!/^[A-Z]{3}$/.test(code)) return false;
-  try {
-    return Intl.supportedValuesOf('currency').includes(code);
-  } catch {
-    return true;
-  }
-}
 
 function isPlainObject(v: unknown): v is Record<string, unknown> {
   return typeof v === 'object' && v !== null && !Array.isArray(v);
