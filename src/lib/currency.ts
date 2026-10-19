@@ -16,34 +16,162 @@ export const DEFAULT_CURRENCY = "USD";
 export interface CurrencyOption {
   /** ISO-4217 code, e.g. "USD". Stored verbatim in the DB. */
   code: string;
-  /** Human label for the dropdown, e.g. "US Dollar". */
+  /** Name for the dropdown, in the app's language, e.g. "US Dollar". */
   label: string;
-  /** Symbol for compact display, e.g. "$". */
-  symbol: string;
 }
 
 /**
- * The currencies offered in pickers. Codes must be valid ISO-4217 so
- * `Intl.NumberFormat` renders the right symbol/grouping. Extend this
- * list to offer more — nothing else needs to change.
+ * Listed first in pickers. This only affects ORDER, never availability:
+ * every real ISO-4217 currency is offered, because the list comes from
+ * `Intl` — so a new currency needs no code change and no migration.
  */
-export const CURRENCIES: CurrencyOption[] = [
-  { code: "USD", label: "US Dollar", symbol: "$" },
-  { code: "EUR", label: "Euro", symbol: "€" },
-  { code: "GBP", label: "British Pound", symbol: "£" },
-  { code: "INR", label: "Indian Rupee", symbol: "₹" },
-  { code: "AUD", label: "Australian Dollar", symbol: "A$" },
-  { code: "CAD", label: "Canadian Dollar", symbol: "C$" },
-  { code: "BRL", label: "Brazilian Real", symbol: "R$" },
-  { code: "JPY", label: "Japanese Yen", symbol: "¥" },
-  { code: "CNY", label: "Chinese Yuan", symbol: "¥" },
-  { code: "AED", label: "UAE Dirham", symbol: "د.إ" },
-  { code: "ZAR", label: "South African Rand", symbol: "R" },
-  { code: "NGN", label: "Nigerian Naira", symbol: "₦" },
-  { code: "SGD", label: "Singapore Dollar", symbol: "S$" },
-  { code: "MXN", label: "Mexican Peso", symbol: "$" },
-  { code: "COP", label: "Colombian Peso", symbol: "$" },
-];
+const PINNED_CODES = ["USD", "UYU", "ARS", "BRL", "EUR"];
+
+/**
+ * Symbols for the compact format ("$1.2M"). Purely cosmetic: a currency
+ * that is not here is still fully supported and simply shows its code
+ * ("UYU 1.2k"). Kept as a Map so a code like "constructor" can't resolve
+ * to something inherited from Object.prototype.
+ */
+const COMPACT_SYMBOLS = new Map<string, string>([
+  ["USD", "$"],
+  ["EUR", "€"],
+  ["GBP", "£"],
+  ["INR", "₹"],
+  ["AUD", "A$"],
+  ["CAD", "C$"],
+  ["BRL", "R$"],
+  ["JPY", "¥"],
+  ["CNY", "¥"],
+  ["AED", "د.إ"],
+  ["ZAR", "R"],
+  ["NGN", "₦"],
+  ["SGD", "S$"],
+  ["MXN", "$"],
+  ["COP", "$"],
+  ["UYU", "$U"],
+]);
+
+/** Every ISO-4217 code the runtime knows; the pinned few if it can't say. */
+function supportedCurrencyCodes(): string[] {
+  try {
+    const codes = Intl.supportedValuesOf("currency");
+    if (codes.length > 0) return codes;
+  } catch {
+    // Runtime without Intl.supportedValuesOf — fall through.
+  }
+  return PINNED_CODES;
+}
+
+/**
+ * Whether `code` (upper-case, 3 letters) is a real ISO-4217 currency.
+ * The schema deliberately accepts any 3-letter code, so this is what the
+ * public API checks to refuse made-up ones — and it is the same list the
+ * pickers offer, so the two can never disagree. If a runtime cannot list
+ * currencies, the shape check alone applies rather than rejecting all.
+ */
+export function isIsoCurrency(code: string): boolean {
+  if (!/^[A-Z]{3}$/.test(code)) return false;
+  try {
+    return Intl.supportedValuesOf("currency").includes(code);
+  } catch {
+    return true;
+  }
+}
+
+/** A locale `Intl` accepts, or "en" — a bad tag must never break a render. */
+function safeLocale(locale: string): string {
+  try {
+    return Intl.getCanonicalLocales(locale)[0] ?? "en";
+  } catch {
+    return "en";
+  }
+}
+
+function currencyNames(locale: string): Intl.DisplayNames | null {
+  for (const l of [safeLocale(locale), "en"]) {
+    try {
+      return new Intl.DisplayNames([l], { type: "currency" });
+    } catch {
+      // try the next one
+    }
+  }
+  return null;
+}
+
+/** "Uruguayan Peso" / "peso uruguayo" — the code itself if unknown. */
+export function getCurrencyName(code: string, locale: string = "en"): string {
+  try {
+    return currencyNames(locale)?.of(code) ?? code;
+  } catch {
+    return code;
+  }
+}
+
+/**
+ * Options for exactly `codes`, named in `locale`. The full list depends on
+ * the ICU build of the JavaScript engine, which can differ between the
+ * server and the browser; a handful of already-chosen codes does not. This
+ * is what a picker renders until it is running in the browser.
+ */
+export function getCurrencyOptionsFor(
+  locale: string,
+  codes: string[],
+): CurrencyOption[] {
+  return [...new Set(codes)]
+    .filter(Boolean)
+    .map((code) => ({ code, label: getCurrencyName(code, locale) }));
+}
+
+const optionsCache = new Map<string, CurrencyOption[]>();
+
+function buildCurrencyOptions(locale: string): CurrencyOption[] {
+  const names = currencyNames(locale);
+  const labelOf = (code: string) => {
+    try {
+      return names?.of(code) ?? code;
+    } catch {
+      return code;
+    }
+  };
+
+  const all = supportedCurrencyCodes().map((code) => ({
+    code,
+    label: labelOf(code),
+  }));
+  const pinned = PINNED_CODES.flatMap((code) => {
+    const found = all.find((o) => o.code === code);
+    return found ? [found] : [];
+  });
+  const rest = all
+    .filter((o) => !PINNED_CODES.includes(o.code))
+    .sort((a, b) => a.label.localeCompare(b.label, safeLocale(locale)));
+  return [...pinned, ...rest];
+}
+
+/**
+ * The currencies offered in pickers, named in `locale`. `include` lists
+ * codes that must appear even if they are not real ISO codes — the value a
+ * form already holds (legacy rows can carry anything, `deals.currency` has
+ * no DB CHECK) — so a select never silently drops what is selected.
+ */
+export function getCurrencyOptions(
+  locale: string = "en",
+  include: string[] = [],
+): readonly CurrencyOption[] {
+  const key = safeLocale(locale);
+  let base = optionsCache.get(key);
+  if (!base) {
+    base = buildCurrencyOptions(key);
+    optionsCache.set(key, base);
+  }
+  const missing = [...new Set(include)].filter(
+    (code) => code && !base.some((o) => o.code === code),
+  );
+  return missing.length > 0
+    ? [...missing.map((code) => ({ code, label: code })), ...base]
+    : base;
+}
 
 /**
  * Format a deal value as a currency string. Whole-number output
@@ -83,14 +211,14 @@ export function formatCurrency(
 /**
  * Compact currency for tight spaces (donut center, legend rows):
  * "$1.2M" / "€34.5k" / "₹900". Uses the currency's symbol from
- * CURRENCIES, falling back to the code when we don't carry a symbol.
+ * COMPACT_SYMBOLS, falling back to the code when we don't carry one.
  */
 export function formatCurrencyShort(
   value: number,
   currency: string = DEFAULT_CURRENCY,
 ): string {
   const code = currency || DEFAULT_CURRENCY;
-  const symbol = CURRENCIES.find((c) => c.code === code)?.symbol ?? `${code} `;
+  const symbol = COMPACT_SYMBOLS.get(code) ?? `${code} `;
   return `${symbol}${formatCompactNumber(value)}`;
 }
 
