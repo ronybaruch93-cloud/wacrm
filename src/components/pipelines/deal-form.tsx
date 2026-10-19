@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
-import { CURRENCIES } from "@/lib/currency";
+import { useCurrencyOptions } from "@/hooks/use-currency-options";
 import { moveDealToStage } from "@/lib/deals/stage-api";
 import type {
   Contact,
@@ -63,6 +63,8 @@ export function DealForm({
   const [title, setTitle] = useState("");
   const [value, setValue] = useState("");
   const [currency, setCurrency] = useState(defaultCurrency);
+  // Includes the held value, so a legacy / unusual code never vanishes from the select.
+  const currencyOptions = useCurrencyOptions([currency]);
   const [contactId, setContactId] = useState("");
   const [stageId, setStageId] = useState("");
   const [assignedTo, setAssignedTo] = useState("");
@@ -405,7 +407,7 @@ export function DealForm({
                   onChange={(e) => setCurrency(e.target.value)}
                   className="h-9 w-full rounded-lg border border-border bg-muted px-2.5 text-sm text-foreground outline-none focus:border-primary"
                 >
-                  {CURRENCIES.map((c) => (
+                  {currencyOptions.map((c) => (
                     <option key={c.code} value={c.code}>
                       {c.code}
                     </option>
