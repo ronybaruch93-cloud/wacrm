@@ -16,6 +16,7 @@ vi.mock('@/lib/deals/stage-events', async (importOriginal) => {
   return { ...actual, moveDealStage: vi.fn() };
 });
 
+import { getCurrencyOptions } from '@/lib/currency';
 import { DealStageError, moveDealStage } from '@/lib/deals/stage-events';
 import {
   ContactError,
@@ -96,6 +97,12 @@ describe('parseCreateDeal — accepts', () => {
       );
     }
   );
+
+  it('every currency a dashboard picker offers (picker and API agree)', () => {
+    for (const { code } of getCurrencyOptions('en')) {
+      expect(parseCreateDeal({ ...VALID, currency: code }).currency).toBe(code);
+    }
+  });
 
   it('drops blank and null field values instead of storing them', () => {
     const input = parseCreateDeal({
